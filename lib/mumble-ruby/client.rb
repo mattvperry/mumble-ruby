@@ -2,13 +2,15 @@ require 'thread'
 
 module Mumble
   class Client
-    attr_reader :host, :port, :username, :password
+    attr_reader :host, :port, :username, :password, :users, :channels
 
     def initialize(host, port=64738, username="Ruby Client", password="")
       @host = host
       @port = port
       @username = username
       @password = password
+      @users, @channels = {}, {}
+      Thread.abort_on_exception = true
     end
 
     def connect
@@ -18,18 +20,69 @@ module Mumble
       version_exchange
       authenticate
 
-      read_thread
-      ping_thread
+      @read_thread = spawn_read_thread
+      @ping_thread = spawn_ping_thread
+    end
+
+    def me
+      @users[@session]
+    end
+
+    def join_channel(channel)
+      me.channel_id = channel.channel_id
+      move = Messages::UserState.new
+      move.session = me.session
+      move.channel_id = me.channel_id
+      @conn.send_message(move)
+    end
+
+    def text_user(user, string)
+      message = Messages::TextMessage.new
+      message.session << user.session
+      message.message = string
+      @conn.send_message(message)
+    end
+
+    def text_channel(channel, string)
+      message = Messages::TextMessage.new
+      message.channel_id << channel.channel_id
+      message.message = string
+      @conn.send_message(message)
     end
 
     private
-    def read_thread
+    def spawn_read_thread
       Thread.new do
+        while 1
+          message = @conn.read_message
+          process_message(message)
+        end
       end
     end
 
-    def ping_thread
+    def spawn_ping_thread
       Thread.new do
+        while 1
+          ping
+          sleep(20)
+        end
+      end
+    end
+
+    def process_message(message)
+      case message
+      when Messages::ServerSync
+        @session = message.session
+      when Messages::ChannelState
+        @channels[message.channel_id] = message
+      when Messages::ChannelRemove
+        @channels.delete(message.channel_id)
+      when Messages::UserState
+        @users[message.session] = message
+      when Messages::UserRemove
+        @users.delete(message.session)
+      when Messages::TextMessage
+        # Callback
       end
     end
 
@@ -47,6 +100,12 @@ module Mumble
       message.username = @username
       message.password = @password
       message.celt_versions << -2147483637
+      @conn.send_message(message)
+    end
+
+    def ping
+      message = Messages::Ping.new
+      message.timestamp = Time.now.to_i
       @conn.send_message(message)
     end
 
