@@ -15,5 +15,7 @@ Gem::Specification.new do |gem|
   gem.require_paths = ["lib"]
   gem.version       = Mumble::VERSION
 
+  gem.add_dependency "activesupport"
+
   gem.add_development_dependency "ruby_protobuf"
 end

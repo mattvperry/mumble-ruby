@@ -1,3 +1,4 @@
+require 'active_support/inflector'
 require 'thread'
 
 module Mumble
@@ -28,26 +29,36 @@ module Mumble
       @users[@session]
     end
 
+    def current_channel
+      @channels[me.channel_id]
+    end
+
     def join_channel(channel)
       me.channel_id = channel.channel_id
-      move = Messages::UserState.new
-      move.session = me.session
-      move.channel_id = me.channel_id
-      @conn.send_message(move)
+      @conn.send_message(:user_state, {
+        session: me.session,
+        channel_id: me.channel_id
+      })
     end
 
     def text_user(user, string)
-      message = Messages::TextMessage.new
-      message.session << user.session
-      message.message = string
-      @conn.send_message(message)
+      @conn.send_message(:text_message, {
+        session: [user.session],
+        message: string
+      })
     end
 
     def text_channel(channel, string)
-      message = Messages::TextMessage.new
-      message.channel_id << channel.channel_id
-      message.message = string
-      @conn.send_message(message)
+      @conn.send_message(:text_message, {
+        channel_id: [channel.channel_id],
+        message: string
+      })
+    end
+
+    def user_stats(user)
+      @conn.send_message(:user_stats, {
+        session: user.session
+      })
     end
 
     private
@@ -83,30 +94,39 @@ module Mumble
         @users.delete(message.session)
       when Messages::TextMessage
         # Callback
+      when Messages::UserStats
+        # Callback
       end
     end
 
     def version_exchange
-      message = Messages::Version.new
-      message.version = encode_version(1, 2, 3)
-      message.release = "mumble-ruby #{Mumble::VERSION}"
-      message.os = %x{uname -o}.strip
-      message.os_version = %x{uname -v}.strip
-      @conn.send_message(message)
+      @conn.send_message(:version, {
+        version: encode_version(1, 2, 3),
+        release: "mumble-ruby #{Mumble::VERSION}",
+        os: %x{uname -o}.strip,
+        os_version: %x{uname -v}.strip
+      })
     end
 
     def authenticate
-      message = Messages::Authenticate.new
-      message.username = @username
-      message.password = @password
-      message.celt_versions << -2147483637
-      @conn.send_message(message)
+      @conn.send_message(:authenticate, {
+        username: @username,
+        password: @password,
+        celt_versions: [
+          force_signed_overflow(0x8000000b),
+          force_signed_overflow(0x80000010)
+        ]
+      })
     end
 
     def ping
-      message = Messages::Ping.new
-      message.timestamp = Time.now.to_i
-      @conn.send_message(message)
+      @conn.send_message(:ping, {
+        timestamp: Time.now.to_i
+      })
+    end
+
+    def force_signed_overflow(num)
+      ((num + 0x80000000) & 0xFFFFFFFF) - 0x80000000
     end
 
     def encode_version(major, minor, patch)

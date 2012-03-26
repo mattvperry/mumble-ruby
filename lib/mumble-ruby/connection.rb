@@ -21,11 +21,26 @@ module Mumble
     def read_message
       header = read_data 6
       type, len = header.unpack Messages::HEADER_FORMAT
-      Messages.from_type type, read_data(len)
+      data = read_data len
+      if type == message_type(:udp_tunnel)
+        # UDP Packet -- No Protobuf
+        message = message_class(:udp_tunnel).new
+        message.packet = data
+      else
+        message = message_raw type, data
+      end
+      message
     end
 
-    def send_message(message)
-      type = Messages.get_type(message)
+    def send_udp_packet(packet)
+      header = [message_type(:udp_tunnel), packet.length].pack Messages::HEADER_FORMAT
+      send_data(header + packet)
+    end
+
+    def send_message(sym, attrs)
+      type, klass = message(sym)
+      message = klass.new
+      attrs.each { |k, v| message.send("#{k}=", v) }
       serial = message.serialize_to_string
       header = [type, serial.size].pack Messages::HEADER_FORMAT
       send_data(header + serial)
@@ -40,6 +55,25 @@ module Mumble
 
     def read_data(len)
       @sock.sysread len
+    end
+
+    def message(obj)
+      return message_type(obj), message_class(obj)
+    end
+
+    def message_type(obj)
+      if obj.is_a? Protobuf::Message
+        obj = obj.class.to_s.demodulize.underscore.to_sym
+      end
+      Messages.sym_to_type(obj)
+    end
+
+    def message_class(obj)
+      Messages.type_to_class(message_type(obj))
+    end
+
+    def message_raw(type, data)
+      Messages.raw_to_obj(type, data)
     end
   end
 end
