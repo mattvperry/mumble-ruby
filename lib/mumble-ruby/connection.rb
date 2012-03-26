@@ -18,6 +18,10 @@ module Mumble
       @sock.connect
     end
 
+    def disconnect
+      @sock.sysclose
+    end
+
     def read_message
       header = read_data 6
       type, len = header.unpack Messages::HEADER_FORMAT

@@ -12,6 +12,8 @@ module Mumble
       @password = password
       @users, @channels = {}, {}
       Thread.abort_on_exception = true
+
+      yield self if block_given?
     end
 
     def connect
@@ -25,6 +27,12 @@ module Mumble
       @ping_thread = spawn_ping_thread
     end
 
+    def disconnect
+      @read_thread.kill
+      @ping_thread.kill
+      @conn.disconnect
+    end
+
     def me
       @users[@session]
     end
@@ -33,11 +41,22 @@ module Mumble
       @channels[me.channel_id]
     end
 
+    def mute(bool=true)
+      @conn.send_message(:user_state, {
+        self_mute: bool
+      })
+    end
+
+    def deafen(bool=true)
+      @conn.send_message(:user_state, {
+        self_deaf: bool
+      })
+    end
+
     def join_channel(channel)
-      me.channel_id = channel.channel_id
       @conn.send_message(:user_state, {
         session: me.session,
-        channel_id: me.channel_id
+        channel_id: channel.channel_id
       })
     end
 
@@ -59,6 +78,14 @@ module Mumble
       @conn.send_message(:user_stats, {
         session: user.session
       })
+    end
+
+    def find_user(name)
+      @users.values.find { |u| u.name == name }
+    end
+
+    def find_channel(name)
+      @channels.values.find { |u| u.name == name }
     end
 
     private
@@ -92,10 +119,6 @@ module Mumble
         @users[message.session] = message
       when Messages::UserRemove
         @users.delete(message.session)
-      when Messages::TextMessage
-        # Callback
-      when Messages::UserStats
-        # Callback
       end
     end
 
@@ -112,10 +135,7 @@ module Mumble
       @conn.send_message(:authenticate, {
         username: @username,
         password: @password,
-        celt_versions: [
-          force_signed_overflow(0x8000000b),
-          force_signed_overflow(0x80000010)
-        ]
+        celt_versions: [force_signed_overflow(0x80000010)]
       })
     end
 
