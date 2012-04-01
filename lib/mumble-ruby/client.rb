@@ -1,7 +1,13 @@
-require 'active_support/inflector'
 require 'thread'
 
 module Mumble
+  class ChannelNotFound < StandardError; end
+  class UserNotFound < StandardError; end
+  class NoSupportedCodec < StandardError; end
+
+  CODEC_ALPHA = 0
+  CODEC_BETA = 3
+
   class Client
     attr_reader :host, :port, :username, :password, :users, :channels
 
@@ -11,17 +17,17 @@ module Mumble
       @username = username
       @password = password
       @users, @channels = {}, {}
-      Thread.abort_on_exception = true
-
-      yield self if block_given?
+      @callbacks = Hash.new { |h, k| h[k] = [] }
     end
 
     def connect
-      @conn = Connection.new(@host, @port)
+      @conn = Connection.new @host, @port
       @conn.connect
 
+      create_encoder
       version_exchange
       authenticate
+      init_callbacks
 
       @read_thread = spawn_read_thread
       @ping_thread = spawn_ping_thread
@@ -41,43 +47,52 @@ module Mumble
       @channels[me.channel_id]
     end
 
+    def stream_raw_audio(file)
+      raise NoSupportedCodec unless @codec
+      AudioStream.new(@codec, 0, @encoder, file, @conn)
+    end
+
+    Messages.all_types.each do |msg_type|
+      define_method "on_#{msg_type}" do |&block|
+        @callbacks[msg_type] << block
+      end
+
+      define_method "send_#{msg_type}" do |opts|
+        @conn.send_message(msg_type, opts)
+      end
+    end
+
     def mute(bool=true)
-      @conn.send_message(:user_state, {
-        self_mute: bool
-      })
+      send_user_state self_mute: bool
     end
 
     def deafen(bool=true)
-      @conn.send_message(:user_state, {
-        self_deaf: bool
-      })
+      send_user_state self_deaf: bool
     end
 
     def join_channel(channel)
-      @conn.send_message(:user_state, {
+      send_user_state({
         session: me.session,
-        channel_id: channel.channel_id
+        channel_id: channel_id(channel)
       })
     end
 
     def text_user(user, string)
-      @conn.send_message(:text_message, {
-        session: [user.session],
+      send_text_message({
+        session: [user_session(user)],
         message: string
       })
     end
 
     def text_channel(channel, string)
-      @conn.send_message(:text_message, {
-        channel_id: [channel.channel_id],
+      send_text_message({
+        channel_id: [channel_id(channel)],
         message: string
       })
     end
 
     def user_stats(user)
-      @conn.send_message(:user_stats, {
-        session: user.session
-      })
+      send_user_stats session: user_session(user)
     end
 
     def find_user(name)
@@ -91,39 +106,56 @@ module Mumble
     private
     def spawn_read_thread
       Thread.new do
-        while 1
+        loop do
           message = @conn.read_message
-          process_message(message)
+          sym = message.class.to_s.demodulize.underscore.to_sym
+          run_callbacks sym, message
         end
       end
     end
 
     def spawn_ping_thread
       Thread.new do
-        while 1
-          ping
+        loop do
+          send_ping timestamp: Time.now.to_i
           sleep(20)
         end
       end
     end
 
-    def process_message(message)
-      case message
-      when Messages::ServerSync
+    def run_callbacks(sym, *args)
+      @callbacks[sym].each { |c| c.call *args }
+    end
+
+    def init_callbacks
+      on_server_sync do |message|
         @session = message.session
-      when Messages::ChannelState
+      end
+      on_channel_state do |message|
         @channels[message.channel_id] = message
-      when Messages::ChannelRemove
+      end
+      on_channel_remove do |message|
         @channels.delete(message.channel_id)
-      when Messages::UserState
+      end
+      on_user_state do |message|
         @users[message.session] = message
-      when Messages::UserRemove
+      end
+      on_user_remove do |message|
         @users.delete(message.session)
+      end
+      on_codec_version do |message|
+        codec_negotiation(message.alpha, message.beta)
       end
     end
 
+    def create_encoder
+      @encoder = Celt::Encoder.new 48000, 480, 1
+      @encoder.prediction_request = 0
+      @encoder.vbr_rate = 75000
+    end
+
     def version_exchange
-      @conn.send_message(:version, {
+      send_version({
         version: encode_version(1, 2, 3),
         release: "mumble-ruby #{Mumble::VERSION}",
         os: %x{uname -o}.strip,
@@ -132,29 +164,50 @@ module Mumble
     end
 
     def authenticate
-      @conn.send_message(:authenticate, {
+      send_authenticate({
         username: @username,
         password: @password,
-        celt_versions: [force_signed_overflow(0x80000010)]
+        celt_versions: [@encoder.bitstream_version]
       })
     end
 
-    def ping
-      @conn.send_message(:ping, {
-        timestamp: Time.now.to_i
-      })
+    def codec_negotiation(alpha, beta)
+      @codec = case @encoder.bitstream_version
+               when alpha then Mumble::CODEC_ALPHA
+               when beta then Mumble::CODEC_BETA
+               end
     end
 
-    def force_signed_overflow(num)
-      ((num + 0x80000000) & 0xFFFFFFFF) - 0x80000000
+    def channel_id(channel)
+      id = case channel
+           when Messages::ChannelState
+             channel.channel_id
+           when Fixnum
+             channel
+           when String
+             find_channel(channel).channel_id
+           end
+
+      raise ChannelNotFound unless @channels.has_key? id
+      id
+    end
+
+    def user_session(user)
+      id = case user
+           when Messages::ChannelState
+             user.session
+           when Fixnum
+             user
+           when String
+             find_user(user).session
+           end
+
+      raise UserNotFound unless @users.has_key? id
+      id
     end
 
     def encode_version(major, minor, patch)
       (major << 16) | (minor << 8) | (patch & 0xFF)
-    end
-
-    def decode_version(version)
-      return version >> 16, version >> 8 & 0xFF, version & 0xFF
     end
   end
 end

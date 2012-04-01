@@ -1,7 +1,7 @@
+require 'active_support/inflector.rb'
 require 'mumble-ruby/version'
 require 'mumble-ruby/messages.rb'
 require 'mumble-ruby/connection.rb'
 require 'mumble-ruby/client.rb'
-
-module Mumble
-end
+require 'mumble-ruby/audio_stream.rb'
+require 'mumble-ruby/packet_data_stream.rb'
