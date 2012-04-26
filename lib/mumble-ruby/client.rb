@@ -29,8 +29,8 @@ module Mumble
       authenticate
       init_callbacks
 
-      @read_thread = spawn_read_thread
-      @ping_thread = spawn_ping_thread
+      @read_thread = spawn_thread :read
+      @ping_thread = spawn_thread :ping
     end
 
     def disconnect
@@ -104,23 +104,19 @@ module Mumble
     end
 
     private
-    def spawn_read_thread
-      Thread.new do
-        loop do
-          message = @conn.read_message
-          sym = message.class.to_s.demodulize.underscore.to_sym
-          run_callbacks sym, message
-        end
-      end
+    def spawn_thread(sym)
+      Thread.new { loop { send sym } }
     end
 
-    def spawn_ping_thread
-      Thread.new do
-        loop do
-          send_ping timestamp: Time.now.to_i
-          sleep(20)
-        end
-      end
+    def read
+      message = @conn.read_message
+      sym = message.class.to_s.demodulize.underscore.to_sym
+      run_callbacks sym, message
+    end
+
+    def ping
+      send_ping timestamp: Time.now.to_i
+      sleep(20)
     end
 
     def run_callbacks(sym, *args)

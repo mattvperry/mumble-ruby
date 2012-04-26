@@ -12,8 +12,8 @@ module Mumble
       @pds = PacketDataStream.new
 
       @queue = Queue.new
-      @producer = spawn_producer_thread
-      @consumer = spawn_consumer_thread
+      @producer = spawn_thread :produce
+      @consumer = spawn_thread :consume
     end
 
     private
@@ -45,15 +45,9 @@ module Mumble
       @conn.send_udp_packet data
     end
 
-    def spawn_producer_thread
+    def spawn_thread(sym)
       Thread.new do
-        loop { produce }
-      end
-    end
-
-    def spawn_consumer_thread
-      Thread.new do
-        loop { consume }
+        loop { send sym }
       end
     end
   end
