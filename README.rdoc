@@ -1,0 +1,72 @@
+mumble-ruby
+    http://www.github.com/perrym5/mumble-ruby
+
+== DESCRIPTION:
+
+Mumble-Ruby is a headless client for the Mumble VOIP application.
+Mumble-Ruby provides the ability to write scripts and bots which interact with mumble servers through a simple DSL.
+Mumble-Ruby also has the ability to stream raw audio from a fifo pipe (mpd) to the mumble server.
+There is huge room for improvement in this library and I am willing to accept all sorts of pull requests so please do.
+
+== INSTALL:
+
+    [sudo] gem install mumble-ruby
+
+== REQUIREMENTS:
+
+* Ruby >= 1.9.2
+* CELT Audio Codec Library version 0.7
+
+== BASIC USAGE:
+
+    # Create client instance for your server
+    cli = Mumble::Client.new('localhost', 64738, 'Mumble Bot', 'password123')
+    # => #<Mumble::Client:0x00000003064fe8 @host="localhost", @port=64738, @username="Mumble Bot", @password="password123", @channels={}, @users={}, @callbacks={}>
+
+    # Set up some callbacks for when you recieve text messages
+    # There are callbacks for every Mumble Protocol Message that a client can recieve
+    # For a reference on those, see the linked PDF at the bottom of the README.
+    cli.on_text_message do |msg|
+        puts msg.message
+    end
+    # => [#<Proc:0x0000000346e5f8@(irb):2>]
+
+    # Initiate the connection to the client
+    cli.connect
+    # => #<Thread:0x000000033d7388 run>
+
+    # Mute and Deafen yourself
+    cli.mute
+    cli.deafen
+
+    # Join the channel titled "Chillen" (this returns the number of bytes written to the socket)
+    cli.join_channel('Chillen')
+    # => 11
+
+    # Get a list of channels
+    cli.channels
+    # Returns a hash of channel_id: ChannelState Messages
+
+    # Join Channel using ID
+    cli.join_channel(0)
+
+    # Join Channel using ChannelState Message
+    cli.join_channel(cli.channels[0])
+
+    # Get a list of users
+    cli.users
+    # Returns a hash of session_id: UserState Messages
+
+    # Text user
+    cli.text_user('perrym5', "Hello there, I'm a robot!")
+    # => 35
+
+    # Start streaming from a FIFO queue of raw PCM data
+    cli.stream_raw_audio('/tmp/mpd.fifo')
+    # => #<Mumble::AudioStream ...>
+
+== MUMBLE PROTOCOL:
+
+The documentation for Mumble's control and voice protocol is a good reference for using this client as all of the callbacks
+are based on the types of messages the Mumble uses to accomplish its tasks.
+You can see it here[https://github.com/mumble-voip/mumble/raw/master/doc/mumble-protocol.pdf].
