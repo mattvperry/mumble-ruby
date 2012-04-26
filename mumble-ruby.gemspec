@@ -6,7 +6,7 @@ Gem::Specification.new do |gem|
   gem.email         = ["perrym5@rpi.edu"]
   gem.description   = %q{Ruby API for interacting with a mumble server}
   gem.summary       = %q{Implements the mumble VOIP protocol in ruby for more easily writing clients.}
-  gem.homepage      = ""
+  gem.homepage      = "http://www.github.com/perrym5/mumble-ruby"
 
   gem.executables   = `git ls-files -- bin/*`.split("\n").map{ |f| File.basename(f) }
   gem.files         = `git ls-files`.split("\n")
