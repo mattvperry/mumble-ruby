@@ -16,6 +16,12 @@ module Mumble
       @consumer = spawn_thread :consume
     end
 
+    def stop
+      @producer.kill
+      @consumer.kill
+      @file.close
+    end
+
     private
     def packet_header
       ((@type << 5) | @target).chr
