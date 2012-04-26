@@ -65,6 +65,10 @@ There is huge room for improvement in this library and I am willing to accept al
     cli.stream_raw_audio('/tmp/mpd.fifo')
     # => #<Mumble::AudioStream ...>
 
+    # Safely disconnect
+    cli.disconnect
+    # => nil
+
 == MUMBLE PROTOCOL:
 
 The documentation for Mumble's control and voice protocol is a good reference for using this client as all of the callbacks
