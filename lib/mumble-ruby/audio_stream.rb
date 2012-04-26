@@ -22,11 +22,13 @@ module Mumble
     end
 
     def produce
-      pcm_data = @file.read(1024)
+      pcm_data = @file.read(@encoder.frame_size * 2)
       @queue << @encoder.encode(pcm_data, @compressed_size)
     end
 
     def consume
+      @seq %= 1000000 # Keep sequence number reasonable for long runs
+
       @pds.rewind
       @seq += @num_frames
       @pds.put_int @seq
@@ -46,9 +48,7 @@ module Mumble
     end
 
     def spawn_thread(sym)
-      Thread.new do
-        loop { send sym }
-      end
+      Thread.new { loop { send sym } }
     end
   end
 end

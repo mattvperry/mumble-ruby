@@ -147,7 +147,7 @@ module Mumble
     def create_encoder
       @encoder = Celt::Encoder.new 48000, 480, 1
       @encoder.prediction_request = 0
-      @encoder.vbr_rate = 75000
+      @encoder.vbr_rate = 60000
     end
 
     def version_exchange
