@@ -34,6 +34,7 @@ module Mumble
     end
 
     def disconnect
+      @encoder.destroy
       @read_thread.kill
       @ping_thread.kill
       @conn.disconnect
