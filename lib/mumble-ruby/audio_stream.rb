@@ -1,5 +1,7 @@
 module Mumble
   class AudioStream
+    attr_reader :volume
+
     def initialize(type, target, encoder, file, connection)
       @type = type
       @target = target
@@ -10,10 +12,15 @@ module Mumble
       @num_frames = 6
       @compressed_size = [@encoder.vbr_rate / 800, 127].min
       @pds = PacketDataStream.new
+      @volume = 1.0
 
       @queue = Queue.new
       @producer = spawn_thread :produce
       @consumer = spawn_thread :consume
+    end
+
+    def volume=(volume)
+      @volume = volume / 100.0
     end
 
     def stop
@@ -23,12 +30,16 @@ module Mumble
     end
 
     private
+    def change_volume(pcm_data)
+      pcm_data.unpack('s*').map { |s| s * @volume }.pack('s*')
+    end
+
     def packet_header
       ((@type << 5) | @target).chr
     end
 
     def produce
-      pcm_data = @file.read(@encoder.frame_size * 2)
+      pcm_data = change_volume @file.read(@encoder.frame_size * 2)
       @queue << @encoder.encode(pcm_data, @compressed_size)
     end
 

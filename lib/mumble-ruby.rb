@@ -1,3 +1,4 @@
+require 'celt-ruby'
 require 'active_support/inflector.rb'
 require 'mumble-ruby/version'
 require 'mumble-ruby/messages.rb'
