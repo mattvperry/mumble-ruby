@@ -11,7 +11,7 @@ module Mumble
     end
 
     def connect
-      context = OpenSSL::SSL::SSLContext.new
+      context = OpenSSL::SSL::SSLContext.new(:TLSv1)
       context.verify_mode = OpenSSL::SSL::VERIFY_NONE
       tcp_sock = TCPSocket.new @host, @port
       @sock = OpenSSL::SSL::SSLSocket.new tcp_sock, context
