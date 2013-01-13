@@ -104,6 +104,11 @@ module Mumble
       @channels.values.find { |u| u.name == name }
     end
 
+    def register_callback(method, type)
+      sym = type.to_sym
+      @callbacks[sym].push method
+    end
+
     private
     def spawn_thread(sym)
       Thread.new { loop { send sym } }
