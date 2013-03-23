@@ -135,7 +135,12 @@ module Mumble
         @channels.delete(message.channel_id)
       end
       on_user_state do |message|
-        @users[message.session] = message
+        if @users[message.session]
+          merged = merge_messages @users[message.session], message
+          @users[message.session] = merged
+        else
+          @users[message.session] = message
+        end
       end
       on_user_remove do |message|
         @users.delete(message.session)
@@ -143,6 +148,17 @@ module Mumble
       on_codec_version do |message|
         codec_negotiation(message.alpha, message.beta)
       end
+    end
+
+    def merge_messages(a, b)
+      a, b = a.dup, b.dup
+      raise "Tried to merge messages of different types: #{a.class} and #{b.class}" unless a.class == b.class
+      fields = b.fields.values.map { |f| f.name }
+
+      fields.each do |field|
+        a[field] = b[field] if b.has_field? field
+      end
+      a      
     end
 
     def create_encoder
