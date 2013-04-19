@@ -1,4 +1,5 @@
 require 'thread'
+require 'ruby-libsamplerate'
 
 module Mumble
   class ChannelNotFound < StandardError; end
@@ -9,13 +10,16 @@ module Mumble
   CODEC_BETA = 3
 
   class Client
-    attr_reader :host, :port, :username, :password, :users, :channels
+    attr_reader :host, :port, :username, :password, :users, :channels, :format
 
-    def initialize(host, port=64738, username="Ruby Client", password="")
+    DEFAULT_FORMAT = {rate: 48000, channels: 1}
+
+    def initialize(host, port=64738, username="Ruby Client", password="", format=DEFAULT_FORMAT)
       @host = host
       @port = port
       @username = username
       @password = password
+      @format = format
       @users, @channels = {}, {}
       @callbacks = Hash.new { |h, k| h[k] = [] }
     end
@@ -25,6 +29,7 @@ module Mumble
       @conn.connect
 
       create_encoder
+      create_resampler
       version_exchange
       authenticate
       init_callbacks
@@ -35,6 +40,7 @@ module Mumble
 
     def disconnect
       @encoder.destroy
+      @resampler.destroy if @resampler
       @read_thread.kill
       @ping_thread.kill
       @conn.disconnect
@@ -50,7 +56,7 @@ module Mumble
 
     def stream_raw_audio(file)
       raise NoSupportedCodec unless @codec
-      AudioStream.new(@codec, 0, @encoder, file, @conn)
+      AudioStream.new(@codec, 0, @encoder, file, @conn, @resampler)
     end
 
     Messages.all_types.each do |msg_type|
@@ -162,9 +168,17 @@ module Mumble
     end
 
     def create_encoder
-      @encoder = Celt::Encoder.new 48000, 480, 1
+      @encoder = Celt::Encoder.new DEFAULT_FORMAT[:rate], 480, DEFAULT_FORMAT[:channels]
       @encoder.prediction_request = 0
       @encoder.vbr_rate = 60000
+    end
+
+    def create_resampler
+      @resampler = if format != DEFAULT_FORMAT
+          SRC::Resample.new format[:rate] , DEFAULT_FORMAT[:rate], format[:channels], SRC::SRC_SINC_MEDIUM_QUALITY
+        else
+          nil
+        end
     end
 
     def version_exchange
