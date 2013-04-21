@@ -59,6 +59,11 @@ module Mumble
       AudioStream.new(@codec, 0, @encoder, file, @conn, @resampler)
     end
 
+    def stream_from_queue(queue)
+      raise NoSupportedCodec unless @codec
+      QueueStream.new(@codec, 0, @encoder, queue, @conn, @resampler)
+    end
+
     Messages.all_types.each do |msg_type|
       define_method "on_#{msg_type}" do |&block|
         @callbacks[msg_type] << block
