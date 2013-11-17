@@ -1,4 +1,5 @@
 require 'thread'
+require 'hashie'
 
 module Mumble
   class ChannelNotFound < StandardError; end
@@ -98,7 +99,7 @@ module Mumble
     end
 
     def find_channel(name)
-      @channels.values.find { |u| u.name == name }
+      @channels.values.find { |c| c.name == name }
     end
 
     private
@@ -126,16 +127,24 @@ module Mumble
         @session = message.session
       end
       on_channel_state do |message|
-        @channels[message.channel_id] = message
+        if channel = channels[message.channel_id]
+          channel.merge! message.to_hash
+        else
+          channels[message.channel_id] = Hashie::Mash.new(message.to_hash)
+        end
       end
       on_channel_remove do |message|
-        @channels.delete(message.channel_id)
+        channels.delete(message.channel_id)
       end
       on_user_state do |message|
-        @users[message.session] = message
+        if user = users[message.session]
+          user.merge! message.to_hash
+        else
+          users[message.session] = Hashie::Mash.new(message.to_hash)
+        end
       end
       on_user_remove do |message|
-        @users.delete(message.session)
+        users.delete(message.session)
       end
       on_codec_version do |message|
         codec_negotiation(message)
@@ -183,7 +192,7 @@ module Mumble
 
     def user_session(user)
       id = case user
-           when Messages::ChannelState
+           when Messages::UserState
              user.session
            when Fixnum
              user
