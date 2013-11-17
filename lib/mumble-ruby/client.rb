@@ -5,9 +5,6 @@ module Mumble
   class UserNotFound < StandardError; end
   class NoSupportedCodec < StandardError; end
 
-  CODEC_ALPHA = 0
-  CODEC_BETA = 3
-
   class Client
     attr_reader :host, :port, :username, :password, :users, :channels
 
@@ -141,19 +138,17 @@ module Mumble
         @users.delete(message.session)
       end
       on_codec_version do |message|
-        codec_negotiation(message.alpha, message.beta)
+        codec_negotiation(message)
       end
     end
 
     def create_encoder
-      @encoder = Celt::Encoder.new 48000, 480, 1
-      @encoder.prediction_request = 0
-      @encoder.vbr_rate = 60000
+      @encoder = nil # Change when ruby-opus is built
     end
 
     def version_exchange
       send_version({
-        version: encode_version(1, 2, 3),
+        version: encode_version(1, 2, 4),
         release: "mumble-ruby #{Mumble::VERSION}",
         os: %x{uname -o}.strip,
         os_version: %x{uname -v}.strip
@@ -164,15 +159,12 @@ module Mumble
       send_authenticate({
         username: @username,
         password: @password,
-        celt_versions: [@encoder.bitstream_version]
+        opus: true
       })
     end
 
-    def codec_negotiation(alpha, beta)
-      @codec = case @encoder.bitstream_version
-               when alpha then Mumble::CODEC_ALPHA
-               when beta then Mumble::CODEC_BETA
-               end
+    def codec_negotiation(message)
+      @codec = nil if message.opus # Change when ruby-opus is built
     end
 
     def channel_id(channel)
