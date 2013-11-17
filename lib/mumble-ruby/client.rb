@@ -9,7 +9,7 @@ module Mumble
   class Client
     attr_reader :host, :port, :username, :password, :users, :channels
 
-    def initialize(host, port=64738, username="Ruby Client", password="")
+    def initialize(host, port=64738, username="RubyClient", password="")
       @host = host
       @port = port
       @username = username
@@ -39,11 +39,11 @@ module Mumble
     end
 
     def me
-      @users[@session]
+      users[@session]
     end
 
     def current_channel
-      @channels[me.channel_id]
+      channels[me.channel_id]
     end
 
     def stream_raw_audio(file)
@@ -95,11 +95,11 @@ module Mumble
     end
 
     def find_user(name)
-      @users.values.find { |u| u.name == name }
+      users.values.find { |u| u.name == name }
     end
 
     def find_channel(name)
-      @channels.values.find { |c| c.name == name }
+      channels.values.find { |c| c.name == name }
     end
 
     private
