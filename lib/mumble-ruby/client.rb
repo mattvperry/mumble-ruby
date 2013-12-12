@@ -135,7 +135,7 @@ module Mumble
         @channels.delete(message.channel_id)
       end
       on_user_state do |message|
-	@users[message.session] = message
+        @users[message.session] = message
       end
       on_user_remove do |message|
         @users.delete(message.session)
