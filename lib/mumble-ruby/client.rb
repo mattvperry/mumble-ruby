@@ -106,6 +106,7 @@ module Mumble
 
     private
     def spawn_thread(sym)
+      Thread.abort_on_exception = true
       Thread.new { loop { send sym } }
     end
 
@@ -135,7 +136,7 @@ module Mumble
         @channels.delete(message.channel_id)
       end
       on_user_state do |message|
-        @users[message.session] = message
+	@users[message.session] = message
       end
       on_user_remove do |message|
         @users.delete(message.session)
