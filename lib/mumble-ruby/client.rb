@@ -106,6 +106,7 @@ module Mumble
 
     private
     def spawn_thread(sym)
+      Thread.abort_on_exception = true
       Thread.new { loop { send sym } }
     end
 

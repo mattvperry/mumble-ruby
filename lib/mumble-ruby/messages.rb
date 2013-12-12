@@ -36,7 +36,8 @@ module Mumble
       codec_version: 21,
       user_stats: 22,
       request_blob: 23,
-      server_config: 24
+      server_config: 24,
+      suggest_config: 25
     }
 
     @@type_to_sym = @@sym_to_type.invert
@@ -123,6 +124,12 @@ module Mumble
       optional :uint32, :max_bandwidth, 2
       optional :string, :welcome_text, 3
       optional :uint64, :permissions, 4
+    end
+     class SuggestConfig < ::Protobuf::Message
+      defined_in __FILE__
+      optional :uint32, :version, 1
+      optional :bool,   :positional, 2
+      optional :bool,   :push_to_talk, 3
     end
     class ChannelRemove < ::Protobuf::Message
       defined_in __FILE__
