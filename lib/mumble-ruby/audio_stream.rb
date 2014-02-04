@@ -20,7 +20,7 @@ module Mumble
     end
 
     def volume=(volume)
-      @volume = volume / 100.0
+      @volume = volume / 50.0
     end
 
     def stop
