@@ -1,3 +1,9 @@
+== NOTICE:
+
+I (elliottwilliams) forked mumble-ruby to use with my project {mumbletune}[https://github.com/elliottwilliams/mumbletune].
+I've developed it a bit since I forked it. However, as mumble-ruby appears to be unmaintained, I plan on keeping using this
+repo in my code for now. If there's any life at mumble-ruby, I would love to merge this work back in!
+
 mumble-ruby
     http://www.github.com/perrym5/mumble-ruby
 
