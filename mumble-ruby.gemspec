@@ -16,6 +16,6 @@ Gem::Specification.new do |gem|
   gem.version       = Mumble::VERSION
 
   gem.add_dependency "activesupport"
-  gem.add_dependency "celt-ruby"
   gem.add_dependency "ruby_protobuf"
+  gem.add_dependency "hashie"
 end

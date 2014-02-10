@@ -14,8 +14,8 @@ There is huge room for improvement in this library and I am willing to accept al
 
 == REQUIREMENTS:
 
-* Ruby >= 1.9.2
-* CELT Audio Codec Library version 0.7
+* Ruby >= 2.0.0
+* OPUS Audio Codec
 
 == BASIC USAGE:
 

@@ -1,17 +1,15 @@
 require 'thread'
+require 'hashie'
 
 module Mumble
   class ChannelNotFound < StandardError; end
   class UserNotFound < StandardError; end
   class NoSupportedCodec < StandardError; end
 
-  CODEC_ALPHA = 0
-  CODEC_BETA = 3
-
   class Client
     attr_reader :host, :port, :username, :password, :users, :channels
 
-    def initialize(host, port=64738, username="Ruby Client", password="")
+    def initialize(host, port=64738, username="RubyClient", password="")
       @host = host
       @port = port
       @username = username
@@ -41,11 +39,11 @@ module Mumble
     end
 
     def me
-      @users[@session]
+      users[@session]
     end
 
     def current_channel
-      @channels[me.channel_id]
+      channels[me.channel_id]
     end
 
     def stream_raw_audio(file)
@@ -97,11 +95,11 @@ module Mumble
     end
 
     def find_user(name)
-      @users.values.find { |u| u.name == name }
+      users.values.find { |u| u.name == name }
     end
 
     def find_channel(name)
-      @channels.values.find { |u| u.name == name }
+      channels.values.find { |c| c.name == name }
     end
 
     private
@@ -130,31 +128,37 @@ module Mumble
         @session = message.session
       end
       on_channel_state do |message|
-        @channels[message.channel_id] = message
+        if channel = channels[message.channel_id]
+          channel.merge! message.to_hash
+        else
+          channels[message.channel_id] = Hashie::Mash.new(message.to_hash)
+        end
       end
       on_channel_remove do |message|
-        @channels.delete(message.channel_id)
+        channels.delete(message.channel_id)
       end
       on_user_state do |message|
-        @users[message.session] = message
+        if user = users[message.session]
+          user.merge! message.to_hash
+        else
+          users[message.session] = Hashie::Mash.new(message.to_hash)
+        end
       end
       on_user_remove do |message|
-        @users.delete(message.session)
+        users.delete(message.session)
       end
       on_codec_version do |message|
-        codec_negotiation(message.alpha, message.beta)
+        codec_negotiation(message)
       end
     end
 
     def create_encoder
-      @encoder = Celt::Encoder.new 48000, 480, 1
-      @encoder.prediction_request = 0
-      @encoder.vbr_rate = 60000
+      @encoder = nil # Change when ruby-opus is built
     end
 
     def version_exchange
       send_version({
-        version: encode_version(1, 2, 3),
+        version: encode_version(1, 2, 4),
         release: "mumble-ruby #{Mumble::VERSION}",
         os: %x{uname -o}.strip,
         os_version: %x{uname -v}.strip
@@ -165,15 +169,12 @@ module Mumble
       send_authenticate({
         username: @username,
         password: @password,
-        celt_versions: [@encoder.bitstream_version]
+        opus: true
       })
     end
 
-    def codec_negotiation(alpha, beta)
-      @codec = case @encoder.bitstream_version
-               when alpha then Mumble::CODEC_ALPHA
-               when beta then Mumble::CODEC_BETA
-               end
+    def codec_negotiation(message)
+      @codec = nil if message.opus # Change when ruby-opus is built
     end
 
     def channel_id(channel)
@@ -192,7 +193,7 @@ module Mumble
 
     def user_session(user)
       id = case user
-           when Messages::ChannelState
+           when Messages::UserState
              user.session
            when Fixnum
              user
