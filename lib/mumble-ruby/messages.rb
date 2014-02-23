@@ -351,12 +351,6 @@ module Mumble
       optional :bool, :strong_certificate, 18, :default => false
       optional :bool, :opus, 19, :default => false
     end
-    class SuggestConfig < ::Protobuf::Message
-      defined_in __FILE__
-      optional :uint32, :version, 1
-      optional :bool, :positional, 2
-      optional :bool, :push_to_talk, 3
-    end
     class RequestBlob < ::Protobuf::Message
       defined_in __FILE__
       repeated :uint32, :session_texture, 1
