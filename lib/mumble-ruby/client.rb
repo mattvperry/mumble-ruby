@@ -9,6 +9,8 @@ module Mumble
   class Client
     attr_reader :host, :port, :username, :password, :users, :channels
 
+    CODEC_OPUS = 4
+
     def initialize(host, port=64738, username="RubyClient", password="")
       @host = host
       @port = port
@@ -152,12 +154,14 @@ module Mumble
     end
 
     def create_encoder
-      @encoder = nil # Change when ruby-opus is built
+      @encoder = Opus::Encoder.new 48000, 480, 1
+      @encoder.vbr_rate = 0 # CBR
+      @encoder.bitrate = 32000 # 32 kbit/s
     end
 
     def version_exchange
       send_version({
-        version: encode_version(1, 2, 4),
+        version: encode_version(1, 2, 5),
         release: "mumble-ruby #{Mumble::VERSION}",
         os: %x{uname -o}.strip,
         os_version: %x{uname -v}.strip
@@ -173,7 +177,7 @@ module Mumble
     end
 
     def codec_negotiation(message)
-      @codec = nil if message.opus # Change when ruby-opus is built
+      @codec = CODEC_OPUS if message.opus
     end
 
     def channel_id(channel)

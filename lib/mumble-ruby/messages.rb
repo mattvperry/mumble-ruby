@@ -68,7 +68,7 @@ module Mumble
       optional :string, :os, 3
       optional :string, :os_version, 4
     end
-    class UDPTunnel < ::Protobuf::Message
+    class UdpTunnel < ::Protobuf::Message
       defined_in __FILE__
       required :bytes, :packet, 1
     end

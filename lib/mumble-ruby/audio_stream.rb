@@ -9,8 +9,7 @@ module Mumble
       @file = File.open(file, 'rb')
       @conn = connection
       @seq = 0
-      @num_frames = 6
-      @compressed_size = [@encoder.vbr_rate / 800, 127].min
+      @compressed_size = 960
       @pds = PacketDataStream.new
       @volume = 1.0
 
@@ -47,16 +46,13 @@ module Mumble
       @seq %= 1000000 # Keep sequence number reasonable for long runs
 
       @pds.rewind
-      @seq += @num_frames
+      @seq += 1
       @pds.put_int @seq
 
-      @num_frames.times do |i|
-        frame = @queue.pop
-        len = frame.size
-        len = len | 0x80 if i < @num_frames - 1
-        @pds.append len
-        @pds.append_block frame
-      end
+      frame = @queue.pop
+      len = frame.size
+      @pds.put_int len
+      @pds.append_block frame
 
       size = @pds.size
       @pds.rewind

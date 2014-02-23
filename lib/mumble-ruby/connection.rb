@@ -53,12 +53,12 @@ module Mumble
     private
     def send_data(data)
       @write_lock.synchronize do
-        @sock.syswrite data
+        @sock.write data
       end
     end
 
     def read_data(len)
-      @sock.sysread len
+      @sock.read len
     end
 
     def message(obj)
