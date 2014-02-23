@@ -217,7 +217,7 @@ module Mumble
       optional :DenyType, :type, 5
       optional :string, :name, 6
     end
-    class ACL < ::Protobuf::Message
+    class Acl < ::Protobuf::Message
       defined_in __FILE__
       class ChanGroup < ::Protobuf::Message
         defined_in __FILE__

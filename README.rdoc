@@ -14,8 +14,9 @@ There is huge room for improvement in this library and I am willing to accept al
 
 == REQUIREMENTS:
 
-* Ruby >= 2.0.0
+* Ruby >= 2.1.0
 * OPUS Audio Codec
+* Murur server > 1.2.4
 
 == BASIC USAGE:
 
