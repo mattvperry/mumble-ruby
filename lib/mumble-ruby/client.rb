@@ -18,6 +18,7 @@ module Mumble
       @password = password
       @users, @channels = {}, {}
       @callbacks = Hash.new { |h, k| h[k] = [] }
+      Thread.abort_on_exception = true
     end
 
     def connect
@@ -85,11 +86,21 @@ module Mumble
       })
     end
 
+    def text_user_img(user, file)
+      img = ImgReader.new file
+      text_user(user, img.to_msg)
+    end
+
     def text_channel(channel, string)
       send_text_message({
         channel_id: [channel_id(channel)],
         message: string
       })
+    end
+
+    def text_channel_img(channel, file)
+      img = ImgReader.new file
+      text_channel(channel, img.to_msg)
     end
 
     def user_stats(user)
@@ -106,14 +117,13 @@ module Mumble
 
     private
     def spawn_thread(sym)
-      Thread.abort_on_exception = true
       Thread.new { loop { send sym } }
     end
 
     def read
       message = @conn.read_message
       sym = message.class.to_s.demodulize.underscore.to_sym
-      run_callbacks sym, message
+      run_callbacks sym, Hashie::Mash.new(message.to_hash)
     end
 
     def ping
@@ -182,30 +192,16 @@ module Mumble
     end
 
     def channel_id(channel)
-      id = case channel
-           when Hashie::Mash
-             channel.channel_id
-           when Messages::ChannelState
-             channel.channel_id
-           when Fixnum
-             channel
-           when String
-             find_channel(channel).channel_id
-           end
+      channel = find_channel(channel) if channel.is_a? String
+      id = channel.respond_to?(:channel_id) ? channel.channel_id : channel
 
       raise ChannelNotFound unless @channels.has_key? id
       id
     end
 
     def user_session(user)
-      id = case user
-           when Messages::UserState
-             user.session
-           when Fixnum
-             user
-           when String
-             find_user(user).session
-           end
+      user = find_user(user) if user.is_a? String
+      id = user.respond_to?(:session) ? user.session : user
 
       raise UserNotFound unless @users.has_key? id
       id
