@@ -183,6 +183,8 @@ module Mumble
 
     def channel_id(channel)
       id = case channel
+           when Hashie::Mash
+             channel.channel_id
            when Messages::ChannelState
              channel.channel_id
            when Fixnum
