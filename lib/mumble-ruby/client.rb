@@ -7,7 +7,8 @@ module Mumble
   class NoSupportedCodec < StandardError; end
 
   class Client
-    attr_reader :host, :port, :username, :password, :users, :channels
+    attr_reader :host, :port, :username, :password, :users, :channels,
+                :connected
 
     CODEC_OPUS = 4
 
@@ -18,7 +19,7 @@ module Mumble
       @password = password
       @users, @channels = {}, {}
       @callbacks = Hash.new { |h, k| h[k] = [] }
-      Thread.abort_on_exception = true
+      @connected = false
     end
 
     def connect
@@ -115,6 +116,10 @@ module Mumble
       channels.values.find { |c| c.name == name }
     end
 
+    def on_connected(&block)
+      @callbacks[:connected] << block
+    end
+
     private
     def spawn_thread(sym)
       Thread.new { loop { send sym } }
@@ -138,6 +143,8 @@ module Mumble
     def init_callbacks
       on_server_sync do |message|
         @session = message.session
+        @connected = true
+        @callbacks[:connected].each { |c| c.call }
       end
       on_channel_state do |message|
         if channel = channels[message.channel_id]

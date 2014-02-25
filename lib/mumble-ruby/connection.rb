@@ -19,7 +19,7 @@ module Mumble
     end
 
     def disconnect
-      @sock.sysclose
+      @sock.close
     end
 
     def read_message
