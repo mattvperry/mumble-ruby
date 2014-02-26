@@ -8,7 +8,7 @@ module Mumble
     CERT_STRING = "/C=%s/O=%s/OU=%s/CN=%s"
 
     def initialize(username, opts)
-      @cert_dir = File.join(opts[:cert_dir], username)
+      @cert_dir = File.join(opts[:cert_dir], "#{username.downcase}_cert")
       @username = username
       @opts = opts
 
