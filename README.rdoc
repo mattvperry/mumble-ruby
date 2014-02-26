@@ -89,7 +89,7 @@ There is huge room for improvement in this library and I am willing to accept al
     # => 35
 
     # Text an image to a channel
-    cli.text_channel('Chillen', '/path/to/image.jpg')
+    cli.text_channel_img('Chillen', '/path/to/image.jpg')
 
     # Start streaming from a FIFO queue of raw PCM data
     cli.stream_raw_audio('/tmp/mpd.fifo')
