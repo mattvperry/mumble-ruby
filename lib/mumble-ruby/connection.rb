@@ -4,15 +4,17 @@ require 'thread'
 
 module Mumble
   class Connection
-    def initialize(host, port)
+    def initialize(host, port, cert_manager)
       @host = host
       @port = port
+      @cert_manager = cert_manager
       @write_lock = Mutex.new
     end
 
     def connect
       context = OpenSSL::SSL::SSLContext.new(:TLSv1)
       context.verify_mode = OpenSSL::SSL::VERIFY_NONE
+      [:key, :cert].each { |s| context.send("#{s}=", @cert_manager.send(s)) }
       tcp_sock = TCPSocket.new @host, @port
       @sock = OpenSSL::SSL::SSLSocket.new tcp_sock, context
       @sock.connect

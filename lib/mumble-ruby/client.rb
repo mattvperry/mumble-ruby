@@ -7,23 +7,27 @@ module Mumble
   class NoSupportedCodec < StandardError; end
 
   class Client
-    attr_reader :host, :port, :username, :password, :users, :channels,
-                :connected
+    attr_reader :users, :channels, :connected
 
     CODEC_OPUS = 4
 
     def initialize(host, port=64738, username="RubyClient", password="")
-      @host = host
-      @port = port
-      @username = username
-      @password = password
       @users, @channels = {}, {}
       @callbacks = Hash.new { |h, k| h[k] = [] }
       @connected = false
+
+      @config = Mumble.configuration.dup.tap do |c|
+        c.host = host
+        c.port = port
+        c.username = username
+        c.password = password
+      end
+      yield(@config) if block_given?
     end
 
     def connect
-      @conn = Connection.new @host, @port
+      cert_manager = CertManager.new(@config.username, @config.ssl_cert_opts)
+      @conn = Connection.new @config.host, @config.port, cert_manager
       @conn.connect
 
       create_encoder
@@ -40,6 +44,7 @@ module Mumble
       @read_thread.kill
       @ping_thread.kill
       @conn.disconnect
+      @connected = false
     end
 
     def me
@@ -172,24 +177,24 @@ module Mumble
     end
 
     def create_encoder
-      @encoder = Opus::Encoder.new 48000, 480, 1
+      @encoder = Opus::Encoder.new @config.sample_rate, @config.sample_rate / 100, 1
       @encoder.vbr_rate = 0 # CBR
-      @encoder.bitrate = 32000 # 32 kbit/s
+      @encoder.bitrate = @config.bitrate
     end
 
     def version_exchange
       send_version({
         version: encode_version(1, 2, 5),
         release: "mumble-ruby #{Mumble::VERSION}",
-        os: %x{uname -o}.strip,
+        os: %x{uname -s}.strip,
         os_version: %x{uname -v}.strip
       })
     end
 
     def authenticate
       send_authenticate({
-        username: @username,
-        password: @password,
+        username: @config.username,
+        password: @config.password,
         opus: true
       })
     end
