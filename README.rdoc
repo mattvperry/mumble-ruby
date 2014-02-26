@@ -16,12 +16,38 @@ There is huge room for improvement in this library and I am willing to accept al
 
 * Ruby >= 2.1.0
 * OPUS Audio Codec
-* Murur server > 1.2.4
+* Murmur server > 1.2.4
+
+== RECENT CHANGES:
+
+* Added OPUS support
+* Added more configuration options
+* Added image text messages
+* Added ssl cert auth
+* Fixed several bugs
 
 == BASIC USAGE:
 
+    # Configure all clients globally
+    Mumble.configure do |conf|
+        # sample rate of sound (48 khz recommended)
+        conf.sample_rate = 48000
+
+        # bitrate of sound (32 kbit/s recommended)
+        conf.bitrate = 32000
+
+        # directory to store user's ssl certs
+        conf.ssl_cert_opts[:cert_dir] = File.expand_path("./")
+    end
+
     # Create client instance for your server
-    cli = Mumble::Client.new('localhost', 64738, 'Mumble Bot', 'password123')
+    cli = Mumble::Client.new('localhost') do |conf|
+        conf.username = 'Mumble Bot'
+        conf.password = 'password123'
+
+        # Overwrite global config
+        conf.bitrate = 48000
+    end
     # => #<Mumble::Client:0x00000003064fe8 @host="localhost", @port=64738, @username="Mumble Bot", @password="password123", @channels={}, @users={}, @callbacks={}>
 
     # Set up some callbacks for when you recieve text messages
@@ -61,6 +87,9 @@ There is huge room for improvement in this library and I am willing to accept al
     # Text user
     cli.text_user('perrym5', "Hello there, I'm a robot!")
     # => 35
+
+    # Text an image to a channel
+    cli.text_channel('Chillen', '/path/to/image.jpg')
 
     # Start streaming from a FIFO queue of raw PCM data
     cli.stream_raw_audio('/tmp/mpd.fifo')
