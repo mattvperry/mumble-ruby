@@ -68,7 +68,7 @@ module Mumble
 			unless @rsh == nil then
 				return
 			end
-			@rsh = ReceiveStreamHandler.new file, @config.sample_rate, @config.sample_rate / 100, @config.channels
+			@rsh = ReceiveStreamHandler.new file, @config.sample_rate, @config.sample_rate / 100, 1
 			on_udp_tunnel do |m|
 				@rsh.process_udp_tunnel m
 			end
