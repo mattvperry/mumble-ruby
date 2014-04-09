@@ -31,7 +31,7 @@ module Mumble
 				@queues[source] = Queue.new
 			end
 
-			@queue[source] << @decoder.decode(opus)
+			@queues[source] << @decoder.decode(opus)
 		end
 
 		private
