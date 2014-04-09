@@ -7,6 +7,7 @@ module Mumble
 			@pds = PacketDataStream.new
 			@decoder = Opus::Decoder.new sample_rate, frame_size, channels
 			@queues = []
+			spawn_thread :play_audio
 		end
 
 		def destroy
