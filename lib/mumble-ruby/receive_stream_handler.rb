@@ -40,7 +40,9 @@ module Mumble
 		end
 
 		def destroy
-			@decoder.destroy
+			@decoder.each do |decoder|
+				decoder.destroy
+			end
 			@file.close
 		end
 
