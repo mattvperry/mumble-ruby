@@ -30,7 +30,11 @@ module Mumble
 			@file = File.open( file, 'w' )
 
 			@pds = PacketDataStream.new
-			@decoder = Opus::Decoder.new sample_rate, frame_size, channels
+			#@decoder = Opus::Decoder.new sample_rate, frame_size, channels  //Don't create yet, we have to create for every stream!
+			@dec_sample_rate = sample_rate
+			@dec_frame_size = frame_size
+			@dec_channels = channels
+			@decoder = []
 			@queues = []
 			spawn_thread :play_audio
 		end
@@ -55,9 +59,10 @@ module Mumble
 
 			if @queues[source] == nil then
 				@queues[source] = Queue.new
+				@decoder[source] = Opus::Decoder.new @dec_sample_rate, @dec_frame_size, @dec_channels
 			end
 
-			@queues[source] << @decoder.decode(opus)
+			@queues[source] << @decoder[source].decode(opus)
 		end
 
 		private
@@ -77,6 +82,7 @@ module Mumble
 
 			pcm1_short.zip( pcm2_short ).each do |s1, s2|
 				to_return.push(( s1 + s2 ) / 2 )
+				# TODO: need better audio merging with normalizing
 			end
 
 			return to_return.pack 's*'
