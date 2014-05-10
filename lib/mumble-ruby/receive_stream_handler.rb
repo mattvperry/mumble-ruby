@@ -22,7 +22,6 @@
 # THE SOFTWARE.                                                                 #
 #################################################################################
 
-
 module Mumble
 	class ReceiveStreamHandler
 
@@ -36,6 +35,7 @@ module Mumble
 			@dec_channels = channels
 			@decoder = []
 			@queues = []
+			@maxlevel = 1.0
 			spawn_thread :play_audio
 		end
 
@@ -63,7 +63,6 @@ module Mumble
 				@queues[source] = Queue.new
 				@decoder[source] = Opus::Decoder.new @dec_sample_rate, @dec_frame_size, @dec_channels
 			end
-
 			@queues[source] << @decoder[source].decode(opus)
 		end
 
@@ -77,36 +76,62 @@ module Mumble
 			end
 		end
 
-		def merge_audio pcm1, pcm2
-			pcm1_short = pcm1.unpack 's*'
-			pcm2_short = pcm2.unpack 's*'
+		def merge_audio pcm1s, pcm2s
 			to_return = []
-
-			pcm1_short.zip( pcm2_short ).each do |s1, s2|
-				to_return.push(( s1 + s2 ) / 2 )
-				# TODO: need better audio merging with normalizing
+			pcm1s.zip( pcm2s ).each do |s1, s2|
+				to_return.push ((s1 + s2))
 			end
+			return to_return
+		end
+		
+		def normalize_audio pcm
+			to_return = []
+			pcm.each do |bigpcm|	
 
-			return to_return.pack 's*'
+				if bigpcm.abs >= 32767 then					# if sum of streams exceed 16-bit signed integer
+					@maxlevel = 32767.0 / bigpcm.abs		# calculate limiter variable for hard limit
+				else
+					if @maxlevel <= 0.99999 then			# else bring limiter variable slowly back
+						@maxlevel += 0.000001				# to 1
+					end
+				end
+				bigpcm = (bigpcm.to_f * @maxlevel).to_i
+				if bigpcm >= 32767 then						# Hard limit if correction not work because float uncertainty
+				bigpcm = 32767 
+				end
+				if bigpcm <= -32768 then
+					bigpcm = -32768 
+				end
+				to_return.push (bigpcm).to_i
+			end
+			return to_return
 		end
 
 		def play_audio
-			pcm = nil
-			
+			mix = nil
+			pcm = []
 			@queues.each do |queue|
 				if queue == nil || queue.empty? then
 					next
 				end
-				if pcm == nil then
-					pcm = queue.pop
+				if queue.size > 200 then					# Drop queue when size is too big to prevent
+					queue.clear								# much sound delay and memory consumption
 				else
-					pcm = merge_audio pcm, queue.pop
+					pcm << queue.pop
+					pcm.each do |frame|
+						if mix == nil then
+							mix = frame.unpack 's*'
+						else
+							mix = merge_audio(mix, frame.unpack('s*'))
+						end
+					end
+					mix = normalize_audio mix
 				end
 			end
-			
-			@file.write pcm
+			if mix != nil then
+				@file.write (mix.pack 's*')
+			end
 		end
-
 	end
 end
 
