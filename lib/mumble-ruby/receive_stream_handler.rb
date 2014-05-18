@@ -1,7 +1,8 @@
 #################################################################################
 # The MIT License (MIT)                                                         #
 #                                                                               #
-# Copyright (c) 2014, Aaron Herting 'qwertos' <aaron@herting.cc>                #
+# Copyright (c) 2014, Aaron Herting 'qwertos' <aaron@herting.cc>,               #
+#                     Reinhard Bramel 'dafoxia' <dafoxia@mail.austria.com>      #
 #                                                                               #
 # Permission is hereby granted, free of charge, to any person obtaining a copy  #
 # of this software and associated documentation files (the "Software"), to deal #
@@ -29,14 +30,15 @@ module Mumble
 			@file = File.open( file, 'w' )
 
 			@pds = PacketDataStream.new
-			#@decoder = Opus::Decoder.new sample_rate, frame_size, channels  //Don't create yet, we have to create for every stream!
 			@dec_sample_rate = sample_rate
 			@dec_frame_size = frame_size
 			@dec_channels = channels
 			@decoder = []
-			@queues = []
+			@opusq = []
 			@maxlevel = 1.0
-			spawn_thread :play_audio
+			@recording = false
+			@normalizer = -1
+			spawn_thread :decode_opus
 		end
 
 		def destroy
@@ -53,17 +55,61 @@ module Mumble
 			@pds.append_block p[1..p.size]
 			
 			@pds.rewind
-			source = @pds.get_int
-			seq = @pds.get_int
-			len = @pds.get_int
-			opus = @pds.get_block len
-			opus = opus.flatten.join
 
-			if @queues[source] == nil then
-				@queues[source] = Queue.new
-				@decoder[source] = Opus::Decoder.new @dec_sample_rate, @dec_frame_size, @dec_channels
+			# if record wanted, write raw opus audio to file
+			# Decoding have to do with a other program.
+			# Header with explains the format is written at the beginning
+			
+			if @recording then
+				@recordfile.write(p[1..p.size])
 			end
-			@queues[source] << @decoder[source].decode(opus)
+
+			# if no audio prozessing wanted, don't do it :)
+			if @normalizer != -1 then
+				source = @pds.get_int
+				seq = @pds.get_int
+				len = @pds.get_int
+				opus = @pds.get_block len
+				opus = opus.flatten.join
+
+				if @opusq[source] == nil then
+					@opusq[source] = Queue.new
+					@decoder[source] = Opus::Decoder.new @dec_sample_rate, @dec_frame_size, @dec_channels
+				end
+				@opusq[source] << opus
+			end
+		end
+
+		def record bool, file
+			if bool then
+				@recordfile = File.open( file, 'w' )
+				header = []
+				header << 'MumbleOpusRawStream [samplerate:<'
+				header << @dec_sample_rate
+				header << '> framesize:<'
+				header << @dec_frame_size
+				header << '> mono/stereo/more(1,2...x):<'
+				header << @dec_channels
+				header << '>]<BODY>repeatly: channel:int16, packetnumber:int16, datalength:int16, data[datalength]</BODY>'
+				@recordfile.write(header.join)
+				@recording = true
+			else
+				if @recordfile != nil then
+					@recording = false
+					@recordfile.close
+				end
+			end
+		end
+
+		def play normalizer
+			################################################
+			#-1: don't decode audio packets                #
+			# 0: only merge to 32 BIT Integer              #
+			# 1: normalize_audio 16BIT LE integer output   #
+			#    ->minor audio issues yet (18.05.2014)     #
+			# 2-32767: currently undefined                 #
+			################################################
+			@normalizer=normalizer
 		end
 
 		private
@@ -71,11 +117,20 @@ module Mumble
 		def spawn_thread sym
 			Thread.new do
 				loop do
+					# measure time 
+					t1 = Time.now
 					send sym
+					t2 = Time.now
+					# sleep a while (time for loop set to 5 ms)
+					sleeptime=t1+0.005-t2
+					if sleeptime > 0 then
+						sleep sleeptime
+					end
 				end
 			end
 		end
 
+		#merging to 32BIT integer
 		def merge_audio pcm1s, pcm2s
 			to_return = []
 			pcm1s.zip( pcm2s ).each do |s1, s2|
@@ -83,11 +138,17 @@ module Mumble
 			end
 			return to_return
 		end
-		
+
+		# try to avoid exceeding 16 BIT integer limit by 2 ways:
+		# first calculate a divide factor to lower maximal value
+		# and get sure to get not out of boundaries
+		# second push the factor slowly up every round
+		# This way of normalisation produce minimal distortion by
+		# maximal output-volume
+		# maybe not optimized code
 		def normalize_audio pcm
 			to_return = []
-			pcm.each do |bigpcm|	
-
+			pcm.each do |bigpcm|
 				if bigpcm.abs >= 32767 then					# if sum of streams exceed 16-bit signed integer
 					@maxlevel = 32767.0 / bigpcm.abs		# calculate limiter variable for hard limit
 				else
@@ -97,7 +158,7 @@ module Mumble
 				end
 				bigpcm = (bigpcm.to_f * @maxlevel).to_i
 				if bigpcm >= 32767 then						# Hard limit if correction not work because float uncertainty
-				bigpcm = 32767 
+					bigpcm = 32767 
 				end
 				if bigpcm <= -32768 then
 					bigpcm = -32768 
@@ -107,29 +168,40 @@ module Mumble
 			return to_return
 		end
 
-		def play_audio
-			mix = nil
+		# decoding of audio moved to here, because we want more control
+		# when decoding time is limited sometimes. Reduces CPU-LOAD, and keep
+		# low latency.
+		def decode_opus
 			pcm = []
-			@queues.each do |queue|
-				if queue == nil || queue.empty? then
-					next
-				end
-				if queue.size > 200 then					# Drop queue when size is too big to prevent
-					queue.clear								# much sound delay and memory consumption
-				else
-					pcm << queue.pop
-					pcm.each do |frame|
-						if mix == nil then
-							mix = frame.unpack 's*'
-						else
-							mix = merge_audio(mix, frame.unpack('s*'))
+			mix = nil
+			@opusq.each_with_index do |opus, index|
+				if !(opus == nil || opus.empty?) then
+					if opus.size > 100 then
+						# Drop pakets if queue grow to long. Reduce audio-lag and decoding-load, also produce audio-artefacts on dropping.
+						while opus.size > 20
+							drop = opus.pop
 						end
 					end
-					mix = normalize_audio mix
+					pcm << @decoder[index].decode(opus.pop)
+				end
+			end
+			pcm.each do |frame|
+				if mix == nil then
+					mix = frame.unpack 's*'
+				else
+					mix = merge_audio(mix, frame.unpack('s*'))
 				end
 			end
 			if mix != nil then
-				@file.write (mix.pack 's*')
+				# do audio normalizing and write to file
+				case @normalizer
+					# there should come more variants...
+					when 0
+						@file.write (mix.pack 'l*')
+					when 1
+						mix = normalize_audio mix
+						@file.write (mix.pack 's*')
+				end
 			end
 		end
 	end

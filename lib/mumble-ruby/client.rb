@@ -15,7 +15,8 @@ module Mumble
       @users, @channels = {}, {}
       @callbacks = Hash.new { |h, k| h[k] = [] }
       @connected = false
-			@rsh = nil
+      @rsh = nil
+      @recordfile = nil
 
       @config = Mumble.configuration.dup.tap do |c|
         c.host = host
@@ -90,6 +91,27 @@ module Mumble
 
     def deafen(bool=true)
       send_user_state self_deaf: bool
+    end
+
+    def setrecordfile(file)
+      @recordfile=file
+    end
+
+    def record(bool=true)
+      unless @rsh == nil
+        unless @recordfile != nil 
+          send_user_state recording: false
+          return
+        end
+        send_user_state recording: bool
+        @rsh.record(bool, @recordfile)
+      end
+    end
+
+    def play(normalize)
+      unless @rsh == nil
+        @rsh.play(normalize) 
+      end
     end
 
     def join_channel(channel)
