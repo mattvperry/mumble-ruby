@@ -35,6 +35,7 @@ module Mumble
 			@dec_channels = channels
 			@decoder = []
 			@opusq = []
+			@pcm = []
 			@maxlevel = 1.0
 			@recording = false
 			@normalizer = -1
@@ -46,6 +47,9 @@ module Mumble
 				decoder.destroy
 			end
 			@file.close
+			if @recording then
+				@recordfile.close;
+			end
 		end
 
 		def process_udp_tunnel message
@@ -134,7 +138,7 @@ module Mumble
 		def merge_audio pcm1s, pcm2s
 			to_return = []
 			pcm1s.zip( pcm2s ).each do |s1, s2|
-				to_return.push ((s1 + s2))
+				to_return.push ((s1.to_i + s2.to_i))
 			end
 			return to_return
 		end
@@ -182,18 +186,30 @@ module Mumble
 							drop = opus.pop
 						end
 					end
-					pcm << @decoder[index].decode(opus.pop)
+					# Decode Opus and enqueue audio-pcm-raw still separated per speaker
+					if @pcm[index] == nil then
+						@pcm[index] = @decoder[index].decode(opus.pop)
+					else
+						@pcm[index] = @pcm[index] + @decoder[index].decode(opus.pop)
+					end
 				end
 			end
-			pcm.each do |frame|
+
+			# Now we have all audio decoded in separated queues, let's check fill status
+			# and if enough audio there pop it and mix it together
+			@pcm.each do |frame|
+			  if (frame != nil) && (frame.length >= 960) then
 				if mix == nil then
-					mix = frame.unpack 's*'
+					mix = frame.slice!(0..959).unpack 's*'
 				else
-					mix = merge_audio(mix, frame.unpack('s*'))
+					mix = merge_audio(mix, frame.slice!(0..959).unpack('s*'))
 				end
+			  end
 			end
+
+			# check if mixed audio is there and do some normalisation if needed and
+			# then write it out!
 			if mix != nil then
-				# do audio normalizing and write to file
 				case @normalizer
 					# there should come more variants...
 					when 0
