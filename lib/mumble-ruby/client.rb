@@ -65,15 +65,37 @@ module Mumble
       AudioStream.new(@codec, 0, @encoder, file, @conn)
     end
 
-		def receive_raw_audio(file)
-			unless @rsh == nil then
-				return
-			end
-			@rsh = ReceiveStreamHandler.new file, @config.sample_rate, @config.sample_rate / 100, 1
-			on_udp_tunnel do |m|
-				@rsh.process_udp_tunnel m
-			end
-		end
+	def receive_raw_audio(file)
+	  unless @rsh == nil then
+	    return
+	  end
+	  @rsh = ReceiveStreamHandler.new file, @config.sample_rate, @config.sample_rate / 100, 1
+	  on_udp_tunnel do |m|
+	    @rsh.process_udp_tunnel m
+	  end
+	end
+		
+	def source_copy_raw_audio
+	  raise NoSupportedCodec unless @codec
+	  unless @rsh == nil then
+	    return @rsh
+	  end
+	  @rsh = ReceiveStreamHandler.new 'dummy.stream', @config.sample_rate, @config.sample_rate / 100, 1
+	  @rsh.set_normalizer(65) 
+	  return @rsh
+	end
+		
+	def get_rsh
+		return @rsh
+	end
+		
+	def copy_raw_audio source
+	  raise NoSupportedCodec unless @codec
+	  on_udp_tunnel do |m|
+	    @rsh.process_udp_tunnel m
+	  end
+	  AudioCopyStream.new(@codec, 0, @encoder, source, @conn)
+	end
 
     Messages.all_types.each do |msg_type|
       define_method "on_#{msg_type}" do |&block|
@@ -110,7 +132,7 @@ module Mumble
 
     def play(normalize)
       unless @rsh == nil
-        @rsh.play(normalize) 
+        @rsh.set_normalizer(normalize) 
       end
     end
 

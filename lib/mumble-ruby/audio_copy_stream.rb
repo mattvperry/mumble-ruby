@@ -58,12 +58,10 @@ module Mumble
     def produce
 	  pcm_data = @copysource.get_pcm ( @encoder.frame_size * 2 )	
 	  if pcm_data == nil then
-		until pcm_data != nil
 		  sleep(0.05)
-		  pcm_data = @copysource.get_pcm ( @encoder.frame_size * 2 )
-		end
+	  else
+        @queue << @encoder.encode(pcm_data, @compressed_size)
 	  end
-      @queue << @encoder.encode(pcm_data, @compressed_size)
     end
 
     def consume
