@@ -74,7 +74,40 @@ module Mumble
 	    @rsh.process_udp_tunnel m
 	  end
 	end
-		
+	
+	def mumble2mumble rec
+		unless @m2m == nil then
+			return
+		end
+		@m2m = Mumble2Mumble.new @codec, @conn, @config.sample_rate, @config.sample_rate / 100, 1, @config.bitrate
+		if rec == true then
+			on_udp_tunnel do |m|
+				@m2m.process_udp_tunnel m
+			end
+		end
+	end
+	
+	def m2m_getframe speaker
+		unless @m2m != nil then
+			return
+		end
+		return @m2m.getframe speaker
+	end
+	
+	def m2m_writeframe frame
+		unless @m2m != nil then
+			return
+		end
+		@m2m.produce frame
+	end
+	
+	def m2m_getsize speaker
+		unless @m2m != nil then
+			return 0
+		end
+		return @m2m.getsize speaker
+	end
+	
 	def source_copy_raw_audio
 	  raise NoSupportedCodec unless @codec
 	  unless @rsh == nil then

@@ -9,7 +9,8 @@ require 'mumble-ruby/packet_data_stream.rb'
 require 'mumble-ruby/img_reader.rb'
 require 'mumble-ruby/cert_manager.rb'
 require 'mumble-ruby/receive_stream_handler.rb'
-require 'mumble-ruby/audio_copy_stream.rb'
+#require 'mumble-ruby/audio_copy_stream.rb'
+require 'mumble-ruby/mumble2mumble.rb'
 
 module Mumble
   DEFAULTS = {

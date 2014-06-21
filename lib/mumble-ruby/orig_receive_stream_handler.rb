@@ -32,30 +32,47 @@ module Mumble
 	# but also longer latency.
 	
 	class JitterBuffer
-		
+	
 		def initialize 
+			@inq = Queue.new
+			@outq = Queue.new
+			@size = 10
 			@data = {}
 			@lastkey = 0
 			@count = 0
 			@datainfo = 0
+			@shouldrun = false
 		end
 
-		def add key, data
-			@data[key] = data
+		def add key, last, data
+			@inq << [key, last, data]
+			@shouldrun = true
+			puts @inq.size.to_s
+			run
 		end
-	
+		
 		def pop
-			if !( @data.size == 0 ) then
-				first = @data.keys.sort.reverse.pop
-				if ( first - 1 ) != @lastkey then
-					@count = ( first - 1 - @lastkey )
-				end
-				@lastkey = first
-				return @data.delete(first)
-			else
-				@count = -1
-				return nil
+			# wait until packet is in buffer
+			while @outq.size == 0 do
+				sleep 0.001
+				puts "warten..."
 			end
+			pop = @outq.pop
+			@count = @lastkey + 1 - pop[0].to_i
+			return pop[2]
+		end
+		
+		def set_size size
+			@size = size
+		end
+		
+		def size
+			return @outq.size
+		end
+		
+		def run
+			puts "gestartet"
+			spawn_thread :sort
 		end
 
 		def missed_packets?
@@ -65,13 +82,18 @@ module Mumble
 				return false
 			end
 		end
-		
+
+=begin		
+		def streampaused?
+			return @data.has_value?(true)
+		end
+			
 		def	datainfo
 			return @datainfo
 		end
 		
 		def size
-			return @data.size
+			return @data.size + @inqueue.size
 		end
 		
 		def empty? 
@@ -81,6 +103,27 @@ module Mumble
 				return false
 			end
 		end
+
+		def add key, last, data
+			@data[key] = [data, last]
+		end
+	
+		def pop
+			if !( @data.size == 0 ) then
+				first = @data.keys.sort.reverse.pop
+				if ( first - 1 ) != @lastkey then
+					@count = ( first - 1 - @lastkey )
+				end
+				@lastkey = first
+				data = @data.delete(first)
+				return data[0]
+			else
+				@count = -1
+				return nil
+			end
+		end
+=end
+		
 	
 		alias :<< :add 
 		alias :push :add 
@@ -89,6 +132,43 @@ module Mumble
 		alias :shift :pop
 		alias :clear :initialize
 		alias :length :size
+		
+		private
+		
+		
+		def sort
+			# check if packet in outq, we have nothing to do
+			# until this one is not played!
+			if @outq.size == 0 then
+				# is buffersize not at maximum try to fill it from input Queue 
+				while ( @data.size <= @size ) && ( @inq.size != 0) do
+					data = @inq.pop
+					@data[data[0]] = [ data[1], data[2] ]
+				end
+				if @data.size != 0 then
+					puts @data.size.to_s + ':' + @inq.size.to_s 
+					#!( @data.has_value? true ) || 
+					if ( ( @data.size >= @size ) )  
+						first = @data.keys.sort.reverse.pop
+						data = @data.delete(first)
+						@outq << [ first, data[0], data[1]]
+					end
+				end
+			else
+				puts "nixda, warten? " + @shouldrun.to_s
+				@shouldrun= false
+				puts "nixda, gestoppt? " + @shouldrun.to_s
+			end
+		end
+			
+		def spawn_thread sym
+			Thread.new do
+				while @shouldrun 
+					send sym
+				end
+			end
+		end
+
 	end
 
 	class ReceiveStreamHandler
@@ -122,8 +202,9 @@ module Mumble
 			@pcmbuffer = ''
 			@pcmbuffersize = 0
 			@jitterbuffersize =25
+			@decoder_run = true
 
-			spawn_thread :decode_opus
+			spawn_decodethread :decode_opus
 			spawn_thread :mixandplay
 		end
 
@@ -159,20 +240,28 @@ module Mumble
 			if @normalizer != -1 then
 				source = @pds.get_int
 				seq = @pds.get_int
-				header = @pds.get_int
+				header = @pds.get_next
 				len = header
+				if (len & 0x80) != 0x00
+					last = true
+				else
+					last =false
+				end
 				opus = @pds.get_block len
 				opus = opus.flatten.join
 
 				if @opusq[source] == nil then
 					@opusq[source] = JitterBuffer.new 
+					@opusq[source].set_size @jitterbuffersize
+					@opusq[source].run
 				end
 				
-				# Don't create Decoder here. It's early enough before decode in decoder run
-				#if @decoder[source] == nil then
-				#	@decoder[source] = Opus::Decoder.new @dec_sample_rate, @dec_frame_size, @dec_channels
-				#end
-				@opusq[source].add seq, opus
+				@opusq[source].add seq, last, opus
+				if !@decoder_run then
+					@decoder_run = true
+					spawn_decodethread :decode_opus
+				end
+				
 			end
 		end
 
@@ -265,6 +354,14 @@ module Mumble
 			end
 		end
 
+		def spawn_decodethread sym
+			Thread.new do
+				while @decoder_run
+					send sym
+				end
+			end
+		end
+
 		#merging to 32BIT integer
 		def merge_audio pcm1s, pcm2s
 			to_return = []
@@ -331,15 +428,14 @@ module Mumble
 		# when decoding time is limited sometimes. Reduces CPU-LOAD, and keep
 		# low latency.
 		def decode_opus
-			maxqueue = 0		#resetqueuelenghtcounter
+			queuelength = 0
 			@opusq.each_with_index do	|opus, speaker|
-				if opus != nil then
-					if opus.length > maxqueue then
-						maxqueue = opus.length
-					end
-					# Decode Opus as long queue length not 'explode'
-					while ( opus.size >= @jitterbuffersize ) && ( opus.size <= ( @jitterbuffersize * 3 ) )
+				if ( opus != nil ) && ( opus.size >= 1 ) then
+					if opus != nil then
 						opuspacket = opus.pop
+						if opus.size > queuelength then
+							queuelength = opus.size
+						end
 						# create decoder if not exists already
 						if	@decoder[speaker]==nil then
 							@decoder[speaker] = Opus::Decoder.new @dec_sample_rate, @dec_frame_size, @dec_channels
@@ -356,24 +452,11 @@ module Mumble
 							@pcm[speaker] = @pcm[speaker] + pcm
 						end
 					end
-					if opus.size > ( @jitterbuffersize * 3 ) then
-						# Drop pakets if queue grow to long. Reduce audio-lag and decoding-load, produces audio-artefacts on dropping!
-						while opus.size > ( @jitterbuffersize * 2 )
-							opus.pop
-						end
-						puts "WARNING ! Packet drop! Overfill primary jitter buffer"
-					end
 				end
 			end
-			
-			# lose handbrake when opus-queue fills
-			if ( maxqueue <= ( @jitterbuffersize * 2 ) ) then
-				handbrake=  0.05 - ( maxqueue / ( @jitterbuffersize * 40 ).to_f )
-				if handbrake >= 0 then 
-					sleep(handbrake)
-				end
+			if queuelength == 0 then
+				@decoder_run = false
 			end
-			
 		end
 		
 		def mixandplay
@@ -423,6 +506,8 @@ module Mumble
 						@pcmbuffer = @pcmbuffer + mix.pack('s*')
 				end
 			end
+			sleep 0.001
 		end
 	end
 end
+
