@@ -44,6 +44,11 @@ module Mumble
 			@seq = 0
 			@pds = PacketDataStream.new
 			@plqueue = Queue.new
+			if bitrate == 0 then
+				@direct_copy = true
+			else
+				@direct_copy = false
+			end
 
 			
 			spawn_thread :consume
@@ -77,30 +82,47 @@ module Mumble
 			end
 			opus = @pds.get_block len
 			opus = opus.flatten.join
-			if @opus[source] == nil then
-				@opus[source] = Opus::Decoder.new @dec_sample_rate, @dec_frame_size, @dec_channels
-			end
+			if !@direct_copy then
+				if @opus[source] == nil then
+					@opus[source] = Opus::Decoder.new @dec_sample_rate, @dec_frame_size, @dec_channels
+				end
 			
-			if @encoder[source] == nil then
-				@encoder[source] = Opus::Encoder.new @enc_sample_rate, @enc_sample_rate / 100, 1
-				@encoder[source].vbr_rate = 0 # CBR
-				@encoder[source].bitrate = @enc_bitrate
-			end
+				if @encoder[source] == nil then
+					@encoder[source] = Opus::Encoder.new @enc_sample_rate, @enc_sample_rate / 100, 1
+					@encoder[source].vbr_rate = 0 # CBR
+					@encoder[source].bitrate = @enc_bitrate
+				end
 			
-			if @queue[source] == nil then
-				@queue[source] = Queue.new
-			end
-			raw = @opus[source].decode(opus) 
-			if raw.size > 0 then
-				@queue[source] << @encoder[source].encode( raw, 960 )
-			end
+				if @queue[source] == nil then
+					@queue[source] = Queue.new
+				end
+				raw = @opus[source].decode(opus) 
+				if raw.size > 0 then
+					@queue[source] << @encoder[source].encode( raw, 960 )
+				end
 
-			if last then 
-				@opus[source].destroy
-				@encoder[source].destroy
-				@opus[source] = nil
-				@encoder[source] = nil
+				if last then 
+					@opus[source].destroy
+					@encoder[source].destroy
+					@opus[source] = nil
+					@encoder[source] = nil
+				end
+			else
+				if @queue[source] == nil then
+					@queue[source] = Queue.new
+				end
+				@queue[source] << opus
 			end
+		end
+		
+		def getspeakers
+			speakers = []
+			@queue.each_with_index do |q, i|
+				if (q != nil) && ( q.size >= 1 ) then
+					speakers << i
+				end
+			end
+			return speakers
 		end
 
 		def	getframe speaker
@@ -110,7 +132,7 @@ module Mumble
 				return nil
 			end
 		end
-
+		
 		def getsize speaker
 			if  @queue[speaker] != nil then
 				return @queue[speaker].size
