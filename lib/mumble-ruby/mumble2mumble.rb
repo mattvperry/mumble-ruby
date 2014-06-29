@@ -99,6 +99,7 @@ module Mumble
 				raw = @opus[source].decode(opus) 
 				if raw.size > 0 then
 					@queue[source] << @encoder[source].encode( raw, 960 )
+					@queue[source] << seq
 				end
 
 				if last then 
@@ -112,6 +113,7 @@ module Mumble
 					@queue[source] = Queue.new
 				end
 				@queue[source] << opus
+				@queue[source] << seq
 			end
 		end
 		
@@ -155,9 +157,8 @@ module Mumble
 		def consume 
 		  frame = @plqueue.pop
 		  if frame != nil then
-			@seq %= 1000000 # Keep sequence number reasonable for long runs
+			@seq = @plqueue.pop
 			@pds.rewind
-			@seq += 1
 			@pds.put_int @seq
 			len = frame.size
 			@pds.put_int len
