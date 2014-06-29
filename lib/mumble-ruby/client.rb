@@ -48,6 +48,9 @@ module Mumble
 			unless @rsh == nil then
 				@rsh.destroy
 			end
+			unless @m2m == nil then
+				@m2m.destroy
+			end
       @conn.disconnect
       @connected = false
     end
@@ -85,6 +88,14 @@ module Mumble
 				@m2m.process_udp_tunnel m
 			end
 		end
+	end
+	
+	
+	def m2m_getspeakers
+		unless @m2m != nil then
+			return
+		end
+		return @m2m.getspeakers
 	end
 	
 	def m2m_getframe speaker
@@ -223,8 +234,8 @@ module Mumble
 
     def read
       message = @conn.read_message
-      sym = message.class.to_s.demodulize.underscore.to_sym
-      run_callbacks sym, Hashie::Mash.new(message.to_hash)
+  	  sym = message.class.to_s.demodulize.underscore.to_sym
+	  run_callbacks sym, Hashie::Mash.new(message.to_hash)
     end
 
     def ping
@@ -269,7 +280,7 @@ module Mumble
 
     def create_encoder
       @encoder = Opus::Encoder.new @config.sample_rate, @config.sample_rate / 100, 1
-      @encoder.vbr_rate = 0 # CBR
+      @encoder.vbr_rate = @config.bitrate # CBR
       @encoder.bitrate = @config.bitrate
     end
 
