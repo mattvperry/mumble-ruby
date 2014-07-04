@@ -17,6 +17,7 @@ module Mumble
       @connected = false
       @rsh = nil
       @recordfile = nil
+	  @cert_manager = nil
 
       @config = Mumble.configuration.dup.tap do |c|
         c.host = host
@@ -28,8 +29,10 @@ module Mumble
     end
 
     def connect
-      cert_manager = CertManager.new(@config.username, @config.ssl_cert_opts)
-      @conn = Connection.new @config.host, @config.port, cert_manager
+	  if @cert_manager == nil then
+	    @cert_manager = CertManager.new(@config.username, @config.ssl_cert_opts)
+	  end
+      @conn = Connection.new @config.host, @config.port, @cert_manager
       @conn.connect
 
       create_encoder
@@ -53,6 +56,8 @@ module Mumble
 			end
       @conn.disconnect
       @connected = false
+	  @m2m = nil
+	  @rsh = nil
     end
 
     def me
@@ -234,7 +239,7 @@ module Mumble
 
     def read
       message = @conn.read_message
-  	  sym = message.class.to_s.demodulize.underscore.to_sym
+	  sym = message.class.to_s.demodulize.underscore.to_sym
 	  run_callbacks sym, Hashie::Mash.new(message.to_hash)
     end
 

@@ -26,16 +26,16 @@ module Mumble
 
     def read_message
       header = read_data 6
-      type, len = header.unpack Messages::HEADER_FORMAT
-      data = read_data len
-      if type == message_type(:udp_tunnel)
-        # UDP Packet -- No Protobuf
-        message = message_class(:udp_tunnel).new
-        message.packet = data
-      else
-        message = message_raw type, data
-      end
-      message
+  	  type, len = header.unpack Messages::HEADER_FORMAT
+	  data = read_data len
+	  if type == message_type(:udp_tunnel)
+		# UDP Packet -- No Protobuf
+		message = message_class(:udp_tunnel).new
+		message.packet = data
+	  else
+		message = message_raw type, data
+	  end
+	  message
     end
 
     def send_udp_packet(packet)

@@ -73,7 +73,7 @@ module Mumble
 
 			source = @pds.get_int
 			seq = @pds.get_int
-			header = @pds.get_next
+			header = @pds.get_int
 			len = header
 			if (len & 0x80) != 0x00
 				last = true
@@ -169,7 +169,7 @@ module Mumble
 			begin
 				@conn.send_udp_packet data
 			rescue
-				puts "could not write (fatal!)"
+				puts "could not write (fatal!) "
 			end
 		  else
 			sleep 0.002
