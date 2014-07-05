@@ -167,6 +167,15 @@ module Mumble
     def setrecordfile(file)
       @recordfile=file
     end
+	
+	def get_imgmsg file
+		to_return = ImgReader.new file
+		return to_return.to_msg
+	end
+	
+	def set_comment newcomment
+		send_user_state comment: newcomment
+	end
 
     def record(bool=true)
       unless @rsh == nil
