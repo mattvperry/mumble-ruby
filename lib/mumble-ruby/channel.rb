@@ -7,6 +7,9 @@ module Mumble
     attribute :parent_id do
       self.data['parent']
     end
+    attribute :links do
+      self.data.fetch('links', [])
+    end
 
     def parent
       client.channels[parent_id]
@@ -15,6 +18,12 @@ module Mumble
     def children
       client.channels.values.select do |channel|
         channel.parent_id == channel_id
+      end
+    end
+
+    def linked_channels
+      links.map do |channel_id|
+        client.channels[channel_id]
       end
     end
 
