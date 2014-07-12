@@ -1,7 +1,7 @@
 module Mumble
   class Channel < Model
     attribute :channel_id do
-      self.data.fetch(:channel_id, 0)
+      self.data.fetch('channel_id', 0)
     end
     attribute :name
     attribute :parent_id do
