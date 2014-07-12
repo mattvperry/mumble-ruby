@@ -38,26 +38,22 @@ module Mumble
 			@enc_sample_rate = sample_rate
 			@enc_frame_size = frame_size
 			@enc_bitrate =bitrate
-			@opus = []
-			@encoder = []
+			
+			@decoder = []
+			@encoder = nil
+			init_encoder type
 			@queue = []
+			
+			@num_frames = 1
 			@seq = 0
 			@pds = PacketDataStream.new
 			@plqueue = Queue.new
-			if bitrate == 0 then
-				@direct_copy = true
-			else
-				@direct_copy = false
-			end
 
-			
 			spawn_thread :consume
 		end
 
 		def destroy
-			@opus.each do |opus|
-				opus.destroy
-			end
+			@decoder.destroy
 			@encoder.each do |encoder|
 				encoder.destroy
 			end
@@ -80,43 +76,22 @@ module Mumble
 			else
 				last =false
 			end
-			opus = @pds.get_block len
-			opus = opus.flatten.join
-			if !@direct_copy then
-				if @opus[source] == nil then
-					@opus[source] = Opus::Decoder.new @dec_sample_rate, @dec_frame_size, @dec_channels
-				end
-			
-				if @encoder[source] == nil then
-					@encoder[source] = Opus::Encoder.new @enc_sample_rate, @enc_sample_rate / 100, 1
-					@encoder[source].vbr_rate = 0 # CBR
-					@encoder[source].bitrate = @enc_bitrate
-				end
-			
-				if @queue[source] == nil then
-					@queue[source] = Queue.new
-				end
-				raw = @opus[source].decode(opus) 
-				if raw.size > 0 then
-					@queue[source] << @encoder[source].encode( raw, 960 )
-					@queue[source] << seq
-				end
+			audio = @pds.get_block len
+			audio = audio.flatten.join
 
-				if last then 
-					@opus[source].destroy
-					@encoder[source].destroy
-					@opus[source] = nil
-					@encoder[source] = nil
-				end
-			else
-				if @queue[source] == nil then
-					@queue[source] = Queue.new
-				end
-				@queue[source] << opus
-				@queue[source] << seq
+			if @queue[source] == nil then
+				@queue[source] = Queue.new
 			end
+
+			if @decoder[source] == nil then
+					@decoder[source] = Opus::Decoder.new @dec_sample_rate, @dec_frame_size, @dec_channels
+					@num_frames=1
+			end
+	
+			# only decode, encoding is done before sending
+			@queue[source] << @decoder[source].decode(audio)
 		end
-		
+
 		def getspeakers
 			speakers = []
 			@queue.each_with_index do |q, i|
@@ -134,7 +109,7 @@ module Mumble
 				return nil
 			end
 		end
-		
+
 		def getsize speaker
 			if  @queue[speaker] != nil then
 				return @queue[speaker].size
@@ -144,25 +119,42 @@ module Mumble
 		end
 		
 		def produce frame
-			@plqueue << frame
+			# Ready to reencode
+			@plqueue << @encoder.encode( frame, @enc_frame_size )
 		end
 		
+		def init_encoder type
+			@type = type
+			if @encoder != nil then
+				@encoder.destroy
+			end
+			@encoder= Opus::Encoder.new @enc_sample_rate, @enc_sample_rate / 100, 1
+			@encoder.vbr_rate = 0 # CBR
+			@encoder.bitrate = @enc_bitrate
+			@num_frames=1
+		end
+		
+
+
 		private
+
 
 		def packet_header
 			((@type << 5) | 0).chr
 		end
 
-		
 		def consume 
-		  frame = @plqueue.pop
-		  if frame != nil then
-			@seq = @plqueue.pop
 			@pds.rewind
+			@seq += @num_frames
 			@pds.put_int @seq
-			len = frame.size
-			@pds.put_int len
-			@pds.append_block frame
+			@num_frames.times do |i|
+				frame = @plqueue.pop
+				len = frame.size
+				len = len | 0x80 if i < @num_frames -1
+				@pds.append len
+				@pds.append_block frame
+			end
+
 			size = @pds.size
 			@pds.rewind
 			data = [packet_header, @pds.get_block(size)].flatten.join
@@ -171,9 +163,6 @@ module Mumble
 			rescue
 				puts "could not write (fatal!) "
 			end
-		  else
-			sleep 0.002
-		  end
 		end
 
 		def spawn_thread sym
