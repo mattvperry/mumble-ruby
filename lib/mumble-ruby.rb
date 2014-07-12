@@ -3,14 +3,17 @@ require 'active_support/inflector.rb'
 require 'mumble-ruby/version'
 require 'mumble-ruby/messages.rb'
 require 'mumble-ruby/connection.rb'
+require 'mumble-ruby/model.rb'
+require 'mumble-ruby/user.rb'
+require 'mumble-ruby/channel.rb'
 require 'mumble-ruby/client.rb'
 require 'mumble-ruby/audio_stream.rb'
 require 'mumble-ruby/packet_data_stream.rb'
 require 'mumble-ruby/img_reader.rb'
 require 'mumble-ruby/cert_manager.rb'
 require 'mumble-ruby/receive_stream_handler.rb'
-#require 'mumble-ruby/audio_copy_stream.rb'
 require 'mumble-ruby/mumble2mumble.rb'
+require 'hashie'
 
 module Mumble
   DEFAULTS = {

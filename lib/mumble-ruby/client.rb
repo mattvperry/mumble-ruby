@@ -1,5 +1,4 @@
 require 'thread'
-require 'hashie'
 
 module Mumble
   class ChannelNotFound < StandardError; end
@@ -271,9 +270,9 @@ module Mumble
       end
       on_channel_state do |message|
         if channel = channels[message.channel_id]
-          channel.merge! message.to_hash
+          channel.update message.to_hash
         else
-          channels[message.channel_id] = Hashie::Mash.new(message.to_hash)
+          channels[message.channel_id] = Channel.new(self, message.to_hash)
         end
       end
       on_channel_remove do |message|
@@ -281,9 +280,9 @@ module Mumble
       end
       on_user_state do |message|
         if user = users[message.session]
-          user.merge! message.to_hash
+          user.update(message.to_hash)
         else
-          users[message.session] = Hashie::Mash.new(message.to_hash)
+          users[message.session] = User.new(self, message.to_hash)
         end
       end
       on_user_remove do |message|
