@@ -16,7 +16,7 @@ There is huge room for improvement in this library and I am willing to accept al
 
 * Ruby >= 2.1.0
 * OPUS Audio Codec
-* Murmur server > 1.2.4 -- NOTE: mumble-ruby will not connect to servers that don't support OPUS anymore. I haven't looked into backwards-compatability with CELT.
+* Murmur server > 1.2.4 -- NOTE: mumble-ruby will not be able to stream audio to servers that don't support OPUS anymore. I haven't looked into backwards-compatability with CELT.
 
 == RECENT CHANGES:
 

@@ -24,89 +24,62 @@
 
 
 module Mumble
-	class ReceiveStreamHandler
+  class ReceiveStreamHandler
 
-		def initialize file, sample_rate, frame_size, channels
-			@file = File.open( file, 'w' )
+    def initialize file, sample_rate, channels
+      @file = File.open( file, 'w' )
+      @pds = PacketDataStream.new
 
-			@pds = PacketDataStream.new
-			#@decoder = Opus::Decoder.new sample_rate, frame_size, channels  //Don't create yet, we have to create for every stream!
-			@dec_sample_rate = sample_rate
-			@dec_frame_size = frame_size
-			@dec_channels = channels
-			@decoder = []
-			@queues = []
-			spawn_thread :play_audio
-		end
+      @decoder = Hash.new do |h, k|
+        h[k] = Opus::Decoder.new sample_rate, sample_rate / 100, channels
+      end
 
-		def destroy
-			@decoder.each do |decoder|
-				decoder.destroy
-			end
-			@file.close
-		end
+      @queues = Hash.new do |h, k|
+        h[k] = Queue.new
+      end
 
-		def process_udp_tunnel message
-			p = message.packet
+      spawn_thread :write_audio
+    end
 
-			@pds.rewind
-			@pds.append_block p[1..p.size]
-			
-			@pds.rewind
-			source = @pds.get_int
-			seq = @pds.get_int
-			len = @pds.get_int
-			opus = @pds.get_block len
-			opus = opus.flatten.join
+    def destroy
+      @decoder.each(&:destroy)
+      @file.close
+    end
 
-			if @queues[source] == nil then
-				@queues[source] = Queue.new
-				@decoder[source] = Opus::Decoder.new @dec_sample_rate, @dec_frame_size, @dec_channels
-			end
+    def process_udp_tunnel message
+      @pds.rewind
+      @pds.append_block message.packet[1..-1]
 
-			@queues[source] << @decoder[source].decode(opus)
-		end
+      @pds.rewind
+      source = @pds.get_int
+      seq = @pds.get_int
+      len = @pds.get_int
+      opus = @pds.get_block len
+      opus = opus.flatten.join
 
-		private
+      @queues[source] << @decoder[source].decode(opus)
+    end
 
-		def spawn_thread sym
-			Thread.new do
-				loop do
-					send sym
-				end
-			end
-		end
+    private
+    def spawn_thread sym
+      Thread.new do
+        loop do
+          send sym
+        end
+      end
+    end
 
-		def merge_audio pcm1, pcm2
-			pcm1_short = pcm1.unpack 's*'
-			pcm2_short = pcm2.unpack 's*'
-			to_return = []
+    # TODO: Better audio stream merge with normalization
+    def write_audio
+      pcm = @queues.values
+        .reject { |q| q.empty? }                      # Remove empty queues
+        .map { |q| q.pop.unpack 's*' }                # Grab the top element of each queue and expand
+        .transpose                                    # Since we now have an array of arrays, transpose the matrix
+        .map { |pcms| pcms.reduce(:+) / pcms.size }   # Average together all the columns of the matrix (merge audio streams)
+        .flatten                                      # Flatten the resulting 1d matrix
+        .pack('s*')                                   # Pack back into PCM data
+      @file.write pcm
+    end
 
-			pcm1_short.zip( pcm2_short ).each do |s1, s2|
-				to_return.push(( s1 + s2 ) / 2 )
-				# TODO: need better audio merging with normalizing
-			end
-
-			return to_return.pack 's*'
-		end
-
-		def play_audio
-			pcm = nil
-			
-			@queues.each do |queue|
-				if queue == nil || queue.empty? then
-					next
-				end
-				if pcm == nil then
-					pcm = queue.pop
-				else
-					pcm = merge_audio pcm, queue.pop
-				end
-			end
-			
-			@file.write pcm
-		end
-
-	end
+  end
 end
-
