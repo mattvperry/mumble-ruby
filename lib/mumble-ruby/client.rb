@@ -7,7 +7,7 @@ module Mumble
   class NoSupportedCodec < StandardError; end
 
   class Client
-    attr_reader :users, :channels, :connected
+    attr_reader :users, :channels, :connected, :ready
 
     CODEC_OPUS = 4
 
@@ -15,6 +15,7 @@ module Mumble
       @users, @channels = {}, {}
       @callbacks = Hash.new { |h, k| h[k] = [] }
       @connected = false
+	  @ready = false
       @rsh = nil
       @recordfile = nil
 	  @cert_manager = nil
@@ -54,6 +55,7 @@ module Mumble
 			unless @m2m == nil then
 				@m2m.destroy
 			end
+	  @ready = false
       @conn.disconnect
       @connected = false
 	  @m2m = nil
@@ -290,6 +292,9 @@ module Mumble
       on_codec_version do |message|
         codec_negotiation(message)
       end
+	  on_ping do |message|
+	    @ready = true
+	  end
     end
 
     def create_encoder
