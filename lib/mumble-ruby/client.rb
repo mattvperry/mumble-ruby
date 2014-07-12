@@ -14,6 +14,7 @@ module Mumble
       @users, @channels = {}, {}
       @callbacks = Hash.new { |h, k| h[k] = [] }
       @connected = false
+			@rsh = nil
 
       @config = Mumble.configuration.dup.tap do |c|
         c.host = host
@@ -42,6 +43,9 @@ module Mumble
       @encoder.destroy
       @read_thread.kill
       @ping_thread.kill
+			unless @rsh == nil then
+				@rsh.destroy
+			end
       @conn.disconnect
       @connected = false
     end
@@ -58,6 +62,16 @@ module Mumble
       raise NoSupportedCodec unless @codec
       AudioStream.new(@codec, 0, @encoder, file, @conn)
     end
+
+		def receive_raw_audio(file)
+			unless @rsh == nil then
+				return
+			end
+			@rsh = ReceiveStreamHandler.new file, @config.sample_rate, @config.sample_rate / 100, 1
+			on_udp_tunnel do |m|
+				@rsh.process_udp_tunnel m
+			end
+		end
 
     Messages.all_types.each do |msg_type|
       define_method "on_#{msg_type}" do |&block|
