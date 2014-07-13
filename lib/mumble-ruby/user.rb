@@ -11,7 +11,7 @@ module Mumble
     attribute :self_mute
     attribute :self_deaf
 
-    def channel
+    def current_channel
       client.channels[channel_id]
     end
 
@@ -23,12 +23,24 @@ module Mumble
       client.text_user_img(self, file)
     end
 
+    def mute(bool=true)
+      client.send_user_state self_mute: bool
+    end
+
+    def deafen(bool=true)
+      client.send_user_state self_deaf: bool
+    end
+
     def muted?
       !!mute || !!self_mute
     end
 
     def deafened?
       !!deaf || !!self_deaf
+    end
+
+    def stats
+      client.send_user_stats session: session
     end
   end
 end
