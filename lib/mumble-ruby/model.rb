@@ -1,6 +1,8 @@
+require 'forwardable'
+
 module Mumble
   class Model
-    extend Forwardable
+    extend ::Forwardable
 
     class << self
       def attribute(name, &block)

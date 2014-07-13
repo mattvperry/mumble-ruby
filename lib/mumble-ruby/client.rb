@@ -1,4 +1,4 @@
-require 'thread'
+require 'hashie'
 
 module Mumble
   class ChannelNotFound < StandardError; end
@@ -6,14 +6,14 @@ module Mumble
   class NoSupportedCodec < StandardError; end
 
   class Client
-    attr_reader :users, :channels, :connected
+    include ThreadTools
+    attr_reader :users, :channels
 
     CODEC_OPUS = 4
 
     def initialize(host, port=64738, username="RubyClient", password="")
       @users, @channels = {}, {}
       @callbacks = Hash.new { |h, k| h[k] = [] }
-      @connected = false
 
       @config = Mumble.configuration.dup.tap do |c|
         c.host = host
@@ -25,99 +25,69 @@ module Mumble
     end
 
     def connect
-      cert_manager = CertManager.new(@config.username, @config.ssl_cert_opts)
       @conn = Connection.new @config.host, @config.port, cert_manager
       @conn.connect
 
-      create_encoder
+      init_callbacks
       version_exchange
       authenticate
-      init_callbacks
 
-      @read_thread = spawn_thread :read
-      @ping_thread = spawn_thread :ping
+      spawn_threads :read, :ping
+      connected? # just to get a nice return value
     end
 
     def disconnect
-      @encoder.destroy
-      @read_thread.kill
-      @ping_thread.kill
-      @rsh.destroy if @rsh
+      kill_threads
       @conn.disconnect
       @connected = false
+    end
+
+    def connected?
+      @connected ||= false
+    end
+
+    def cert_manager
+      @cert_manager ||= CertManager.new @config.username, @config.ssl_cert_opts
+    end
+
+    def recorder
+      raise NoSupportedCodec unless @codec
+      @recorder ||= AudioRecorder.new self, @config.sample_rate
+    end
+
+    def player
+      raise NoSupportedCodec unless @codec
+      @audio_streamer ||= AudioPlayer.new @codec, @conn, @config.sample_rate, @config.bitrate
     end
 
     def me
       users[@session]
     end
 
-    def current_channel
-      channels[me.channel_id]
-    end
-
-    def stream_raw_audio(file)
-      raise NoSupportedCodec unless @codec
-      AudioStream.new(@codec, 0, @encoder, file, @conn)
-    end
-
-    def receive_raw_audio(file)
-      @rsh ||= ReceiveStreamHandler.new file, @config.sample_rate, 1
-      on_udp_tunnel do |m|
-        @rsh.process_udp_tunnel m
-      end
-    end
-
-    Messages.all_types.each do |msg_type|
-      define_method "on_#{msg_type}" do |&block|
-        @callbacks[msg_type] << block
-      end
-
-      define_method "send_#{msg_type}" do |opts|
-        @conn.send_message(msg_type, opts)
-      end
-    end
-
-    def mute(bool=true)
-      send_user_state self_mute: bool
-    end
-
-    def deafen(bool=true)
-      send_user_state self_deaf: bool
-    end
-
     def join_channel(channel)
-      send_user_state({
-        session: me.session,
-        channel_id: channel_id(channel)
-      })
+      id = channel_id channel
+      send_user_state(session: @session, channel_id: id)
+      channels[id]
     end
 
     def text_user(user, string)
-      send_text_message({
-        session: [user_session(user)],
-        message: string
-      })
+      session = user_session user
+      send_text_message(session: [user_session(user)], message: string)
+      users[session]
     end
 
     def text_user_img(user, file)
-      img = ImgReader.new file
-      text_user(user, img.to_msg)
+      text_user(user, ImgReader.msg_from_file(file))
     end
 
     def text_channel(channel, string)
-      send_text_message({
-        channel_id: [channel_id(channel)],
-        message: string
-      })
+      id = channel_id channel
+      send_text_message(channel_id: [id], message: string)
+      channels[id]
     end
 
     def text_channel_img(channel, file)
-      img = ImgReader.new file
-      text_channel(channel, img.to_msg)
-    end
-
-    def user_stats(user)
-      send_user_stats session: user_session(user)
+      text_channel(channel, ImgReader.msg_from_file(file))
     end
 
     def find_user(name)
@@ -132,11 +102,21 @@ module Mumble
       @callbacks[:connected] << block
     end
 
-    private
-    def spawn_thread(sym)
-      Thread.new { loop { send sym } }
+    def remove_callback(symbol, callback)
+      @callbacks[symbol].delete callback
     end
 
+    Messages.all_types.each do |msg_type|
+      define_method "on_#{msg_type}" do |&block|
+        @callbacks[msg_type] << block
+      end
+
+      define_method "send_#{msg_type}" do |opts|
+        @conn.send_message(msg_type, opts)
+      end
+    end
+
+    private
     def read
       message = @conn.read_message
       sym = message.class.to_s.demodulize.underscore.to_sym
@@ -181,12 +161,6 @@ module Mumble
       on_codec_version do |message|
         codec_negotiation(message)
       end
-    end
-
-    def create_encoder
-      @encoder = Opus::Encoder.new @config.sample_rate, @config.sample_rate / 100, 1
-      @encoder.vbr_rate = 0 # CBR
-      @encoder.bitrate = @config.bitrate
     end
 
     def version_exchange

@@ -20,6 +20,11 @@ There is huge room for improvement in this library and I am willing to accept al
 
 == RECENT CHANGES:
 
+* Merged changes for proper user/channel objects
+* Merged changes for recording feature
+* Added half-broken support for playing files (Something is wrong, wouldn't recommend using it)
+* Bit of refactoring and renaming
+
 * Added OPUS support
 * Added more configuration options
 * Added image text messages
@@ -62,23 +67,25 @@ There is huge room for improvement in this library and I am willing to accept al
     cli.connect
     # => #<Thread:0x000000033d7388 run>
 
-    # Mute and Deafen yourself
-    cli.mute
-    cli.deafen
+    # Mute and Deafen yourself after connecting
+    cli.on_connect do
+        cli.me.mute
+        cli.me.deafen
+    end
 
-    # Join the channel titled "Chillen" (this returns the number of bytes written to the socket)
+    # Join the channel titled "Chillen" (this will return a channel object for that channel)
     cli.join_channel('Chillen')
-    # => 11
 
     # Get a list of channels
     cli.channels
-    # Returns a hash of channel_id: ChannelState Messages
+    # Returns a hash of channel_id: Channel objects
 
     # Join Channel using ID
     cli.join_channel(0)
 
-    # Join Channel using ChannelState Message
+    # Join Channel using Channel object
     cli.join_channel(cli.channels[0])
+    cli.channels[0].join
 
     # Get a list of users
     cli.users
@@ -86,14 +93,20 @@ There is huge room for improvement in this library and I am willing to accept al
 
     # Text user
     cli.text_user('perrym5', "Hello there, I'm a robot!")
-    # => 35
 
     # Text an image to a channel
     cli.text_channel_img('Chillen', '/path/to/image.jpg')
 
     # Start streaming from a FIFO queue of raw PCM data
-    cli.stream_raw_audio('/tmp/mpd.fifo')
-    # => #<Mumble::AudioStream ...>
+    cli.player.stream_named_pipe('/tmp/mpd.fifo')
+
+    # EXPERIMENTAL: Recording feature
+    cli.recorder.start('/home/matt/record.wav')
+    sleep(2)
+    cli.recorder.stop
+
+    # EXPERIMENTAL: Play wav files
+    cli.player.play_file('/home/matt/record.wav')
 
     # Safely disconnect
     cli.disconnect

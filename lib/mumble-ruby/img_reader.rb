@@ -14,26 +14,24 @@ module Mumble
   end
 
   class ImgReader
-    attr_reader :file
-    FORMATS = %w(png jpg jpeg svg)
+    class << self
+      FORMATS = %w(png jpg jpeg svg)
 
-    def initialize(file)
-      @file = file
-      raise LoadError.new("#{file} not found") unless File.exists? file
-      raise UnsupportedImgFormat unless FORMATS.include? ext
-      raise ImgTooLarge unless File.size(file) <= 128 * 1024
-    end
+      def msg_from_file(file)
+        @@file = file
+        @@ext = File.extname(@@file)[1..-1]
+        validate_file
 
-    def ext
-      @ext ||= File.extname(@file)[1..-1]
-    end
+        data = File.read @@file
+        "<img src='data:image/#{@@ext};base64,#{Base64.encode64(data)}'/>"
+      end
 
-    def data
-      @data ||= File.read @file
-    end
-
-    def to_msg
-      "<img src='data:image/#{ext};base64,#{Base64.encode64(data)}'/>"
+      private
+      def validate_file
+        raise LoadError.new("#{@@file} not found") unless File.exists? @@file
+        raise UnsupportedImgFormat unless FORMATS.include? @@ext
+        raise ImgTooLarge unless File.size(@@file) <= 128 * 1024
+      end
     end
   end
 end
