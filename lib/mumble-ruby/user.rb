@@ -1,6 +1,7 @@
 module Mumble
   class User < Model
     attribute :session
+    attribute :user_id
     attribute :actor
     attribute :name
     attribute :channel_id

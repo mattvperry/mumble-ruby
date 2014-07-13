@@ -37,12 +37,7 @@ module Mumble
       %Q{#<#{self.class.name} #{attrs}>}
     end
 
-    protected def data
-      @data
-    end
-
-    protected def client
-      @client
-    end
+    protected
+    attr_reader :data, :client
   end
 end
