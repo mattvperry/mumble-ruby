@@ -18,5 +18,6 @@ Gem::Specification.new do |gem|
   gem.add_dependency "activesupport"
   gem.add_dependency "ruby_protobuf"
   gem.add_dependency "hashie"
+  gem.add_dependency "opus-ruby"
   gem.add_dependency "wavefile"
 end
