@@ -111,6 +111,7 @@ module Mumble
 
     def mute(bool=true)
       send_user_state self_mute: bool
+	end
 
     def player
       raise NoSupportedCodec unless @codec
@@ -126,8 +127,8 @@ module Mumble
     end
 	
 	def get_imgmsg file
-		to_return = ImgReader.new file
-		return to_return.to_msg
+		to_return = ImgReader.msg_from_file(file)
+		return to_return
 	end
 	
 	def set_comment newcomment
