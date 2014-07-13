@@ -38,7 +38,7 @@ module Mumble
     def stream_named_pipe(pipe)
       unless playing?
         @file = File.open(pipe, 'rb')
-        spawn_thread :produce, :consume
+        spawn_threads :produce, :consume
         @playing = true
       end
     end
