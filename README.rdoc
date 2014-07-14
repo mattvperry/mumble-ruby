@@ -68,7 +68,7 @@ There is huge room for improvement in this library and I am willing to accept al
     # => #<Thread:0x000000033d7388 run>
 
     # Mute and Deafen yourself after connecting
-    cli.on_connect do
+    cli.on_connected do
         cli.me.mute
         cli.me.deafen
     end
