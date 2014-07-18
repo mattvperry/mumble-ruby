@@ -24,11 +24,10 @@
 #################################################################################
 
 module Mumble
-
 	class Mumble2Mumble
-
+		include ThreadTools
+		
 		def initialize type, conn, sample_rate, frame_size, channels, bitrate
-			attr_writer :buffersize
 
 			@pds = PacketDataStream.new
 			@dec_sample_rate = sample_rate
@@ -39,14 +38,17 @@ module Mumble
 			@enc_sample_rate = sample_rate
 			@enc_frame_size = frame_size
 			@enc_bitrate =bitrate
+			@pds_lock = Mutex.new
+			@decoders = Hash.new do |h, k|
+				h[k] = Opus::Decoder.new sample_rate, sample_rate / 100, 1
+			end
+			@queues = Hash.new do |h, k|
+				h[k] = Queue.new
+			end
 			
-			@decoder = []
 			@encoder = nil
 			init_encoder type
-			#@queue = []
-			# Don't use Queue, we will use a Ringbuffer now
-			@buffer = []
-			@num_frames = 1
+
 			@seq = 0
 			@pds = PacketDataStream.new
 			@plqueue = Queue.new
@@ -54,89 +56,31 @@ module Mumble
 			spawn_thread :consume
 		end
 
-		def destroy
-			@encoder.destroy
-			@decoder.each do |decoder|
-				decoder.destroy
-			end
-		end
 
 		def process_udp_tunnel message
-			p = message.packet
-
-			@pds.rewind
-			@pds.append_block p[1..p.size]
+			@pds_lock.synchronize do
+				@pds.rewind
+				@pds.append_block message.packet[1..-1]
 			
-			@pds.rewind
-
-			source = @pds.get_int
-			seq = @pds.get_int
-			header = @pds.get_int
-			len = header
-			if (len & 0x80) != 0x00
-				last = true
-			else
-				last =false
+				@pds.rewind
+				source = @pds.get_int
+				seq = @pds.get_int
+				len = @pds.get_int
+				audio = @pds.get_block len
+				@queues[source] << @decoders[source].decode(audio.join)
 			end
-			audio = @pds.get_block len
-			audio = audio.flatten.join
-
-			# Don't need anymore with array
-			#if @queue[source] == nil then
-			#	@queue[source] = Queue.new
-			#end
-			
-			if @buffer[source] == nil then
-				@buffer[source] = Ringbuffer.new(100)
-			end
-
-			if @decoder[source] == nil then
-					@decoder[source] = Opus::Decoder.new @dec_sample_rate, @dec_frame_size, @dec_channels
-					@num_frames=1
-			end
-	
-			# only decode, encoding is done before sending
-			#@queue[source] << @decoder[source].decode(audio)
-			@buffer[source].push @decoder[source].decode(audio)
 		end
 
 		def getspeakers
-			speakers = []
-			#@queue.each_with_index do |q, i|
-			#	if (q != nil) && ( q.size >= 1 ) then
-			#		speakers << i
-			#	end
-			#end
-			@buffer.each_with_index do |b, i|
-				speakers << i if (b != nil) && (q.size >=1)
-			end
-			return speakers
+			return @queues.keys
 		end
 
 		def	getframe speaker
-			#if ( @queue[speaker] != nil ) && ( @queue[speaker].size >= 1 ) then
-			#return @queue[speaker].pop
-			#else
-			#	return nil
-			#end
-			if ( @buffer[speaker] != nil ) && ( @buffer[speaker].size >=1 ) then
-				return @buffer[speaker].shift
-			else
-				return nil
-			end
+			return @queues[speaker].pop
 		end
 
 		def getsize speaker
-			#if  @queue[speaker] != nil then
-			#	return @queue[speaker].size
-			#else
-			#	return 0
-			#end
-			if @buffer[speaker] != nil then
-				return @buffer[speaker].size
-			else
-				return 0
-			end
+			return @queues[speaker].size
 		end
 		
 		def produce frame
@@ -152,7 +96,6 @@ module Mumble
 			@encoder= Opus::Encoder.new @enc_sample_rate, @enc_sample_rate / 100, 1
 			@encoder.vbr_rate = 0 # CBR
 			@encoder.bitrate = @enc_bitrate
-			@num_frames=1
 		end
 		
 
@@ -166,16 +109,12 @@ module Mumble
 
 		def consume 
 			@pds.rewind
-			@seq += @num_frames
+			@seq += 1
 			@pds.put_int @seq
-			@num_frames.times do |i|
-				frame = @plqueue.pop
-				len = frame.size
-				len = len | 0x80 if i < @num_frames -1
-				@pds.append len
-				@pds.append_block frame
-			end
-
+			frame = @plqueue.pop
+			len = frame.size
+			@pds.append len
+			@pds.append_block frame
 			size = @pds.size
 			@pds.rewind
 			data = [packet_header, @pds.get_block(size)].flatten.join
