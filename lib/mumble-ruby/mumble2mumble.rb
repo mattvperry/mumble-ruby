@@ -28,6 +28,7 @@ module Mumble
 	class Mumble2Mumble
 
 		def initialize type, conn, sample_rate, frame_size, channels, bitrate
+			attr_writer :buffersize
 
 			@pds = PacketDataStream.new
 			@dec_sample_rate = sample_rate
@@ -42,8 +43,9 @@ module Mumble
 			@decoder = []
 			@encoder = nil
 			init_encoder type
-			@queue = []
-			
+			#@queue = []
+			# Don't use Queue, we will use a Ringbuffer now
+			@buffer = []
 			@num_frames = 1
 			@seq = 0
 			@pds = PacketDataStream.new
@@ -79,8 +81,13 @@ module Mumble
 			audio = @pds.get_block len
 			audio = audio.flatten.join
 
-			if @queue[source] == nil then
-				@queue[source] = Queue.new
+			# Don't need anymore with array
+			#if @queue[source] == nil then
+			#	@queue[source] = Queue.new
+			#end
+			
+			if @buffer[source] == nil then
+				@buffer[source] = Ringbuffer.new(100)
 			end
 
 			if @decoder[source] == nil then
@@ -89,30 +96,44 @@ module Mumble
 			end
 	
 			# only decode, encoding is done before sending
-			@queue[source] << @decoder[source].decode(audio)
+			#@queue[source] << @decoder[source].decode(audio)
+			@buffer[source].push @decoder[source].decode(audio)
 		end
 
 		def getspeakers
 			speakers = []
-			@queue.each_with_index do |q, i|
-				if (q != nil) && ( q.size >= 1 ) then
-					speakers << i
-				end
+			#@queue.each_with_index do |q, i|
+			#	if (q != nil) && ( q.size >= 1 ) then
+			#		speakers << i
+			#	end
+			#end
+			@buffer.each_with_index do |b, i|
+				speakers << i if (b != nil) && (q.size >=1)
 			end
 			return speakers
 		end
 
 		def	getframe speaker
-			if ( @queue[speaker] != nil ) && ( @queue[speaker].size >= 1 ) then
-				return @queue[speaker].pop
+			#if ( @queue[speaker] != nil ) && ( @queue[speaker].size >= 1 ) then
+			#return @queue[speaker].pop
+			#else
+			#	return nil
+			#end
+			if ( @buffer[speaker] != nil ) && ( @buffer[speaker].size >=1 ) then
+				return @buffer[speaker].shift
 			else
 				return nil
 			end
 		end
 
 		def getsize speaker
-			if  @queue[speaker] != nil then
-				return @queue[speaker].size
+			#if  @queue[speaker] != nil then
+			#	return @queue[speaker].size
+			#else
+			#	return 0
+			#end
+			if @buffer[speaker] != nil then
+				return @buffer[speaker].size
 			else
 				return 0
 			end
