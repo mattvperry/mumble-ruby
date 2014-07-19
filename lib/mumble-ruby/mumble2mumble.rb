@@ -67,7 +67,9 @@ module Mumble
 				seq = @pds.get_int
 				len = @pds.get_int
 				audio = @pds.get_block len
-				@queues[source] << @decoders[source].decode(audio.join)
+				if @queues[source].size <= 200 then
+					@queues[source] << @decoders[source].decode(audio.join) 
+				end
 			end
 		end
 
