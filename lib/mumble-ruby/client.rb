@@ -39,9 +39,9 @@ module Mumble
 
     def disconnect
 	  @ready = false
+      @connected = false
       kill_threads
       @conn.disconnect
-      @connected = false
 	  @m2m = nil
 	  @rsh = nil
     end
@@ -181,7 +181,7 @@ module Mumble
     def find_user(name)
       users.values.find { |u| u.name == name }
     end
-
+	
     def find_channel(name)
       channels.values.find { |c| c.name == name }
     end
