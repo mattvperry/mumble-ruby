@@ -8,7 +8,8 @@ module Mumble
   class Client
     include ThreadTools
     attr_reader :users, :channels, :ready
-
+    CODEC_ALPHA = 0
+    CODEC_BETA = 3
     CODEC_OPUS = 4
 
     def initialize(host, port=64738, username="RubyClient", password="")
@@ -43,7 +44,6 @@ module Mumble
       kill_threads
       @conn.disconnect
 	  @m2m = nil
-	  @rsh = nil
     end
 
     def connected?
@@ -125,31 +125,14 @@ module Mumble
     def setrecordfile(file)
       @recordfile=file
     end
-	
-	def get_imgmsg file
-		to_return = ImgReader.msg_from_file(file)
-		return to_return
-	end
-	
-	def set_comment newcomment
-		send_user_state comment: newcomment
-	end
 
-    def record(bool=true)
-      unless @rsh == nil
-        unless @recordfile != nil 
-          send_user_state recording: false
-          return
-        end
-        send_user_state recording: bool
-        @rsh.record(bool, @recordfile)
-      end
+    def get_imgmsg file
+        to_return = ImgReader.msg_from_file(file)
+        return to_return
     end
 
-    def play(normalize)
-      unless @rsh == nil
-        @rsh.set_normalizer(normalize) 
-      end
+    def set_comment newcomment
+        send_user_state comment: newcomment
     end
 
     def join_channel(channel)
@@ -213,7 +196,7 @@ module Mumble
 
     def ping
       send_ping timestamp: Time.now.to_i
-      sleep(20)
+      sleep(5)
     end
 
     def run_callbacks(sym, *args)
@@ -267,15 +250,21 @@ module Mumble
     end
 
     def authenticate
+      encoder = Celt::Encoder.new 32000, 180, 1
       send_authenticate({
         username: @config.username,
         password: @config.password,
+        celt_versions: [encoder.bitstream_version],
         opus: true
       })
+      encoder.destroy
     end
 
     def codec_negotiation(message)
+      encoder = Celt::Encoder.new 32000, 180, 1
+      @codec =  [CODEC_ALPHA, CODEC_BETA][[message.alpha, message.beta].index(encoder.bitstream_version)]
       @codec = CODEC_OPUS if message.opus
+      encoder.destroy
     end
 
     def channel_id(channel)

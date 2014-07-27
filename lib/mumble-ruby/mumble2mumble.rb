@@ -24,117 +24,127 @@
 #################################################################################
 
 module Mumble
-	class Mumble2Mumble
-		include ThreadTools
-		
-		def initialize type, conn, sample_rate, frame_size, channels, bitrate
+    class Mumble2Mumble
+        include ThreadTools
 
-			@pds = PacketDataStream.new
-			@dec_sample_rate = sample_rate
-			@dec_frame_size = frame_size
-			@dec_channels = channels
-			@type = type
-			@conn = conn
-			@enc_sample_rate = sample_rate
-			@enc_frame_size = frame_size
-			@enc_bitrate =bitrate
-			@pds_lock = Mutex.new
-			@decoders = Hash.new do |h, k|
-				h[k] = Opus::Decoder.new sample_rate, sample_rate / 100, 1
-			end
-			@queues = Hash.new do |h, k|
-				h[k] = Queue.new
-			end
-			
-			@encoder = nil
-			init_encoder type
+        def initialize type, conn, sample_rate, frame_size, channels, bitrate
 
-			@seq = 0
-			@pds = PacketDataStream.new
-			@plqueue = Queue.new
+            @pds = PacketDataStream.new
+            @dec_sample_rate = sample_rate
+            @dec_frame_size = frame_size
+            @dec_channels = channels
+            @type = type
+            @conn = conn
+            @enc_sample_rate = sample_rate
+            @enc_frame_size = frame_size
+            @enc_bitrate =bitrate
+            @compressed_size = [bitrate / 800, 127].min
+            @pds_lock = Mutex.new
+            if @type == 4 then
+                @decoders = Hash.new do |h, k|
+                    h[k] = Opus::Decoder.new sample_rate, sample_rate / 100, 1
+                end
+            else
+                @decoders = Hash.new do |h, k|
+                    h[k] = Celt::Decoder.new sample_rate, sample_rate / 100, 1
+                end
+            end
+            @queues = Hash.new do |h, k|
+                h[k] = Queue.new
+            end
 
-			spawn_thread :consume
-		end
+            @encoder = nil
+            init_encoder type
 
+            @seq = 0
+            @pds = PacketDataStream.new
+            @plqueue = Queue.new
 
-		def process_udp_tunnel message
-			@pds_lock.synchronize do
-				@pds.rewind
-				@pds.append_block message.packet[1..-1]
-			
-				@pds.rewind
-				source = @pds.get_int
-				seq = @pds.get_int
-				len = @pds.get_int
-				audio = @pds.get_block len
-				if @queues[source].size <= 200 then
-					@queues[source] << @decoders[source].decode(audio.join) 
-				end
-			end
-		end
-
-		def getspeakers
-			return @queues.keys
-		end
-
-		def	getframe speaker
-			return @queues[speaker].pop
-		end
-
-		def getsize speaker
-			return @queues[speaker].size
-		end
-		
-		def produce frame
-			# Ready to reencode
-			@plqueue << @encoder.encode( frame, @enc_frame_size )
-		end
-		
-		def init_encoder type
-			@type = type
-			if @encoder != nil then
-				@encoder.destroy
-			end
-			@encoder= Opus::Encoder.new @enc_sample_rate, @enc_sample_rate / 100, 1
-			@encoder.vbr_rate = 0 # CBR
-			@encoder.bitrate = @enc_bitrate
-		end
-		
+            spawn_thread :consume
+        end
 
 
-		private
+        def process_udp_tunnel message
+            @pds_lock.synchronize do
+                @pds.rewind
+                @pds.append_block message.packet[1..-1]
 
+                @pds.rewind
+                source = @pds.get_int
+                seq = @pds.get_int
+                len = @pds.get_next
+                audio = @pds.get_block ( len & 0x7f )
+                @decoders[source].inspect
+                if @queues[source].size <= 200 then
+                    @queues[source] << @decoders[source].decode(audio.join) 
+                end
+            end
+        end
 
-		def packet_header
-			((@type << 5) | 0).chr
-		end
+        def getspeakers
+            return @queues.keys
+        end
 
-		def consume 
-			@pds.rewind
-			@seq += 1
-			@pds.put_int @seq
-			frame = @plqueue.pop
-			len = frame.size
-			@pds.append len
-			@pds.append_block frame
-			size = @pds.size
-			@pds.rewind
-			data = [packet_header, @pds.get_block(size)].flatten.join
-			begin
-				@conn.send_udp_packet data
-			rescue
-				puts "could not write (fatal!) "
-			end
-		end
+        def	getframe speaker
+            return @queues[speaker].pop
+        end
 
-		def spawn_thread sym
-			Thread.new do
-				loop do
-					send sym
-				end
-			end
-		end
-		
-	end
+        def getsize speaker
+            return @queues[speaker].size
+        end
+
+        def produce frame
+            # Ready to reencode
+            @plqueue << @encoder.encode( frame, @compressed_size )
+        end
+
+        def init_encoder type
+            @type = type
+            if @encoder != nil then
+                @encoder.destroy
+            end
+            if @type == 4 then
+                @encoder= Opus::Encoder.new @enc_sample_rate, @enc_sample_rate / 100, 1
+                @encoder.vbr_rate = 0 # CBR
+                @encoder.bitrate = @enc_bitrate
+            else
+                @encoder= Celt::Encoder.new @enc_sample_rate, @enc_sample_rate / 100, 1
+                @encoder.vbr_rate = @enc_bitrate
+                @encoder.prediction_request = 0
+            end
+        end
+
+        private
+
+        def packet_header
+            ((@type << 5) | 0).chr
+        end
+
+        def consume 
+            @pds.rewind
+            @seq += 1
+            @pds.put_int @seq
+            frame = @plqueue.pop
+            len = frame.size
+            @pds.append len
+            @pds.append_block frame
+            size = @pds.size
+            @pds.rewind
+            data = [packet_header, @pds.get_block(size)].flatten.join
+            begin
+                @conn.send_udp_packet data
+            rescue
+                puts "could not write (fatal!) "
+            end
+        end
+
+        def spawn_thread sym
+            Thread.new do
+                loop do
+                    send sym
+                end
+            end
+        end
+    end
 end
 
