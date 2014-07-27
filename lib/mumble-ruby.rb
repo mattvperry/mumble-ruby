@@ -1,4 +1,5 @@
 require 'opus-ruby'
+require 'celt-ruby'
 require 'active_support/inflector'
 require 'mumble-ruby/version'
 require 'mumble-ruby/thread_tools'
