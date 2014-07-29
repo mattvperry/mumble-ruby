@@ -265,6 +265,9 @@ module Mumble
       @codec =  [CODEC_ALPHA, CODEC_BETA][[message.alpha, message.beta].index(encoder.bitstream_version)]
       @codec = CODEC_OPUS if message.opus
       encoder.destroy
+      if @audio_streamer != nil then 
+        @audio_streamer.set_codec @codec
+      end
     end
 
     def channel_id(channel)

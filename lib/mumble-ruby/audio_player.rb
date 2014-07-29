@@ -4,6 +4,9 @@ module Mumble
   class AudioPlayer
     include ThreadTools
     COMPRESSED_SIZE = 960
+    CODEC_ALPHA = 0
+    CODEC_BETA = 3
+    CODEC_OPUS = 4
 
     def initialize(type, connection, sample_rate, bitrate)
       @packet_header = (type << 5).chr
@@ -11,10 +14,20 @@ module Mumble
       @pds = PacketDataStream.new
       @queue = Queue.new
       @wav_format = WaveFile::Format.new :mono, :pcm_16, sample_rate
+      @type = type
+      @bitrate = bitrate
+      @sample_rate = sample_rate
+      
 
       create_encoder sample_rate, bitrate
     end
 
+    def set_codec type
+        @type = type
+        @packet_header = (type << 5).chr
+        create_encoder @sample_rate, @bitrate
+    end
+    
     def volume
       @volume ||= 100
     end
@@ -54,9 +67,22 @@ module Mumble
 
     private
     def create_encoder(sample_rate, bitrate)
-      @encoder = Opus::Encoder.new sample_rate, sample_rate / 100, 1
-      @encoder.vbr_rate = 0 # CBR
-      @encoder.bitrate = bitrate
+      kill_threads
+
+      @encoder.destroy if @encoder != nil 
+
+      if @type != CODEC_OPUS then
+        @encoder = Celt::Encoder.new sample_rate, sample_rate / 100, 1
+        @encoder.vbr_rate = bitrate
+        @encoder.prediction_request = 0
+      else
+        @encoder = Opus::Encoder.new sample_rate, sample_rate / 100, 1
+        @encoder.vbr_rate = 0 # CBR
+        @encoder.bitrate = bitrate
+      end
+      if playing? then  
+        spawn_threads :produce, :consume 
+      end
     end
 
     def change_volume(pcm_data)
@@ -78,7 +104,11 @@ module Mumble
 
     def encode_sample(sample)
       pcm_data = change_volume sample
-      @queue << @encoder.encode(pcm_data, COMPRESSED_SIZE)
+      if @type == 4 then
+        @queue << @encoder.encode(pcm_data, COMPRESSED_SIZE)
+      else
+        @queue << @encoder.encode(pcm_data, [@bitrate / 800, 127].min)
+      end
     end
 
     def consume
