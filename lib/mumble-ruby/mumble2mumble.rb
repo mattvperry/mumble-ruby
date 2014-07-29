@@ -26,6 +26,11 @@
 module Mumble
     class Mumble2Mumble
         include ThreadTools
+        COMPRESSED_SIZE = 960
+        CODEC_ALPHA = 0
+        CODEC_SPEEX = 2
+        CODEC_BETA = 3
+        CODEC_OPUS = 4
 
         def initialize type, conn, sample_rate, frame_size, channels, bitrate
 
@@ -37,17 +42,14 @@ module Mumble
             @conn = conn
             @enc_sample_rate = sample_rate
             @enc_frame_size = frame_size
-            @enc_bitrate =bitrate
+            @enc_bitrate = bitrate
             @compressed_size = [bitrate / 800, 127].min
             @pds_lock = Mutex.new
-            if @type == 4 then
-                @decoders = Hash.new do |h, k|
-                    h[k] = Opus::Decoder.new sample_rate, sample_rate / 100, 1
-                end
-            else
-                @decoders = Hash.new do |h, k|
-                    h[k] = Celt::Decoder.new sample_rate, sample_rate / 100, 1
-                end
+            @opus_decoders = Hash.new do |h, k|
+                h[k] = Opus::Decoder.new sample_rate, sample_rate / 100, 1
+            end
+            @celt_decoders = Hash.new do |h, k|
+               h[k] = Celt::Decoder.new sample_rate, sample_rate / 100, 1
             end
             @queues = Hash.new do |h, k|
                 h[k] = Queue.new
@@ -67,16 +69,32 @@ module Mumble
         def process_udp_tunnel message
             @pds_lock.synchronize do
                 @pds.rewind
-                @pds.append_block message.packet[1..-1]
+                @pds.append_block message.packet#[1..-1]
 
                 @pds.rewind
+                packet_type = @pds.get_next
                 source = @pds.get_int
                 seq = @pds.get_int
                 len = @pds.get_next
                 audio = @pds.get_block ( len & 0x7f )
-                @decoders[source].inspect
+                #@decoders[source].inspect
                 if @queues[source].size <= 200 then
-                    @queues[source] << @decoders[source].decode(audio.join) 
+                    case (packet_type >> 5 )
+                    when CODEC_ALPHA
+                        @queues[source] << @celt_decoders[source].decode(audio.join) 
+                        puts "CELT input from " + source.to_s
+                    when CODEC_BETA
+                        puts "CELT-BETA CODEC"
+                    when CODEC_OPUS
+                        @queues[source] << @opus_decoders[source].decode(audio.join)
+                        puts "OPUS input from " + source.to_s 
+                    when CODEC_SPEEX
+                        puts "SPEEX CODEC"
+                    when 1
+                        puts "PING PACKET"
+                    when 4..7
+                        puts "should be unused!"
+                    end
                 end
             end
         end
@@ -95,7 +113,15 @@ module Mumble
 
         def produce frame
             # Ready to reencode
-            @plqueue << @encoder.encode( frame, @compressed_size )
+            #@plqueue << @encoder.encode( frame, @compressed_size )
+            if @type == 4 then
+                @plqueue << @encoder.encode(frame, COMPRESSED_SIZE)
+            else
+                while frame.size >=1 do 
+                    part = frame.slice!(0..@encoder.frame_size*2)
+                    @plqueue << @encoder.encode(part, @compressed_size )
+                end
+            end
         end
 
         def init_encoder type
