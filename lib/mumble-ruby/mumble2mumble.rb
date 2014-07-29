@@ -109,7 +109,7 @@ module Mumble
 
         def getsize speaker
             return @queues[speaker].size
-        end
+        endC
 
         def produce frame
             # Ready to reencode
