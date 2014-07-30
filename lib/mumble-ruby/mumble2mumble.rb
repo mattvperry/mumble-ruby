@@ -22,7 +22,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN     #
 # THE SOFTWARE.                                                                 #
 #################################################################################
-
+require 'benchmark'
 module Mumble
     class Mumble2Mumble
         include ThreadTools
@@ -62,7 +62,7 @@ module Mumble
             @pds = PacketDataStream.new
             @plqueue = Queue.new
 
-            spawn_thread :consume
+            spawn_threads :consume
         end
 
 
@@ -77,23 +77,20 @@ module Mumble
                 seq = @pds.get_int
                 len = @pds.get_next
                 audio = @pds.get_block ( len & 0x7f )
-                #@decoders[source].inspect
                 if @queues[source].size <= 200 then
                     case (packet_type >> 5 )
                     when CODEC_ALPHA
                         @queues[source] << @celt_decoders[source].decode(audio.join) 
-                        puts "CELT input from " + source.to_s
                     when CODEC_BETA
-                        puts "CELT-BETA CODEC"
+                        #puts "CELT-BETA CODEC"
                     when CODEC_OPUS
-                        @queues[source] << @opus_decoders[source].decode(audio.join)
-                        puts "OPUS input from " + source.to_s 
+                         @queues[source] << @opus_decoders[source].decode(audio.join)
                     when CODEC_SPEEX
-                        puts "SPEEX CODEC"
+                        #puts "SPEEX CODEC"
                     when 1
-                        puts "PING PACKET"
+                        #puts "PING PACKET"
                     when 4..7
-                        puts "should be unused!"
+                        #puts "should be unused!"
                     end
                 end
             end
@@ -109,7 +106,7 @@ module Mumble
 
         def getsize speaker
             return @queues[speaker].size
-        endC
+        end
 
         def produce frame
             # Ready to reencode
@@ -122,6 +119,12 @@ module Mumble
                     @plqueue << @encoder.encode(part, @compressed_size )
                 end
             end
+        end
+        
+        def set_codec type
+            kill_threads
+            init_encoder type
+            spawn_threads :consume
         end
 
         def init_encoder type
@@ -161,14 +164,6 @@ module Mumble
                 @conn.send_udp_packet data
             rescue
                 puts "could not write (fatal!) "
-            end
-        end
-
-        def spawn_thread sym
-            Thread.new do
-                loop do
-                    send sym
-                end
             end
         end
     end
