@@ -7,7 +7,7 @@ module Mumble
 
   class Client
     include ThreadTools
-    attr_reader :users, :channels, :ready
+    attr_reader :users, :channels, :ready, :codec
     CODEC_ALPHA = 0
     CODEC_BETA = 3
     CODEC_OPUS = 4
@@ -59,45 +59,57 @@ module Mumble
       @recorder ||= AudioRecorder.new self, @config.sample_rate
     end
 
-	def mumble2mumble rec
-		unless @m2m == nil then
-			return
-		end
-		@m2m = Mumble2Mumble.new @codec, @conn, @config.sample_rate, @config.sample_rate / 100, 1, @config.bitrate
-		if rec == true then
-			on_udp_tunnel do |m|
-				@m2m.process_udp_tunnel m
-			end
-		end
-	end
-	
-	def m2m_getspeakers
-		unless @m2m != nil then
-			return
-		end
-		return @m2m.getspeakers
-	end
-	
-	def m2m_getframe speaker
-		unless @m2m != nil then
-			return
-		end
-		return @m2m.getframe speaker
-	end
-	
-	def m2m_writeframe frame
-		unless @m2m != nil then
-			return
-		end
-		@m2m.produce frame
-	end
-	
-	def m2m_getsize speaker
-		unless @m2m != nil then
-			return 0
-		end
-		return @m2m.getsize speaker
-	end
+    def get_codec
+        case @codec
+        when CODEC_ALPHA
+            to_return = "CELT-ALPHA (0.7.0)"
+        when CODEC_BETA
+            to_return = "CELT-BETA (0.11.0)"
+        when CODEC_OPUS
+            to_return = "OPUS"
+        end
+        return to_return
+    end
+    
+    def mumble2mumble rec
+        unless @m2m == nil then
+            return
+        end
+        @m2m = Mumble2Mumble.new @codec, @conn, @config.sample_rate, @config.sample_rate / 100, 1, @config.bitrate
+        if rec == true then
+            on_udp_tunnel do |m|
+                @m2m.process_udp_tunnel m
+            end
+        end
+    end
+
+    def m2m_getspeakers
+        unless @m2m != nil then
+            return
+        end
+        return @m2m.getspeakers
+    end
+
+    def m2m_getframe speaker
+        unless @m2m != nil then
+            return
+        end
+        return @m2m.getframe speaker
+    end
+
+    def m2m_writeframe frame
+        unless @m2m != nil then
+            return
+        end
+        @m2m.produce frame
+    end
+
+    def m2m_getsize speaker
+        unless @m2m != nil then
+            return 0
+        end
+        return @m2m.getsize speaker
+    end
 
     Messages.all_types.each do |msg_type|
       define_method "on_#{msg_type}" do |&block|
@@ -111,7 +123,7 @@ module Mumble
 
     def mute(bool=true)
       send_user_state self_mute: bool
-	end
+    end
 
     def player
       raise NoSupportedCodec unless @codec
@@ -267,6 +279,9 @@ module Mumble
       encoder.destroy
       if @audio_streamer != nil then 
         @audio_streamer.set_codec @codec
+      end
+      if @m2m != nil then
+        @m2m.set_codec @codec
       end
     end
 
