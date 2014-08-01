@@ -34,41 +34,33 @@ module Mumble
 
         def initialize type, conn, sample_rate, frame_size, channels, bitrate
 
-            @file =  File.open("sound.raw", "w")
             @pds = PacketDataStream.new
             @sendpds = PacketDataStream.new
-            @dec_sample_rate = sample_rate
-            @dec_frame_size = frame_size
-            @dec_channels = channels
             @type = type
             @conn = conn
-            @enc_sample_rate = sample_rate
-            @enc_frame_size = frame_size
-            @enc_bitrate = bitrate
             @compressed_size = [bitrate / 800, 127].min
             @pds_lock = Mutex.new
             @opus_decoders = Hash.new do |h, k|
-                h[k] = Opus::Decoder.new sample_rate, sample_rate / 100, 1
+                h[k] = Opus::Decoder.new sample_rate, sample_rate / 100, channels
             end
             @celt_decoders = Hash.new do |h, k|
-                h[k] = Celt::Decoder.new sample_rate, sample_rate / 100, 1
+                h[k] = Celt::Decoder.new sample_rate, sample_rate / 100, channels
             end
             @queues = Hash.new do |h, k|
                 h[k] = Queue.new
             end
 
-            @opus_encoder= Opus::Encoder.new @enc_sample_rate, @enc_sample_rate / 100, 1
+            @opus_encoder= Opus::Encoder.new sample_rate, sample_rate / 100, channels
             @opus_encoder.vbr_rate = 0 # CBR
-            @opus_encoder.bitrate = @enc_bitrate
+            @opus_encoder.bitrate = bitrate
 
-            @celt_encoder= Celt::Encoder.new @enc_sample_rate, @enc_sample_rate / 100, 1
-            @celt_encoder.vbr_rate = @enc_bitrate
+            @celt_encoder= Celt::Encoder.new sample_rate, sample_rate / 100, channels
+            @celt_encoder.vbr_rate = bitrate
             @celt_encoder.prediction_request = 0
 
             @rawaudio = ''
             
             @seq = 0
-            @pds = PacketDataStream.new
             @plqueue = Queue.new
 
             spawn_threads :consume
@@ -172,42 +164,21 @@ module Mumble
             end
 
             if @plqueue.size > 0 then
-#                if true == true then
-                    @sendpds.rewind
-                    @seq += 1
-                    @sendpds.put_int @seq
-                    frame = @plqueue.pop
-                    len = frame.size
-                    @sendpds.append len
-                    @sendpds.append_block frame
-                    size = @sendpds.size
-                    @sendpds.rewind
-                    data = [packet_header, @sendpds.get_block(size)].flatten.join
-                    begin
-                        @conn.send_udp_packet data
-                    rescue
-                        puts "could not write (fatal!) "
-                    end
-#                else
-#                    @sendpds.rewind
-#                    @seq += num_frames
-#                    @sendpds.put_int @seq
-#                    num_frames.times do |i|
-#                        frame = @plqueue.pop
-#                        len = frame.size
-#                        len = len | 0x80 if i < ( num_frames - 1 )
-#                        @sendpds.append len
-#                        @sendpds.append_block frame
-#                    end
-#                    size = @sendpds.size
-#                    @sendpds.rewind
-#                    data = [packet_header, @sendpds.get_block(size)].flatten.join
-#                    begin
-#                        @conn.send_udp_packet data
-#                    rescue
-#                        puts "could not write (fatal!) "
-#                    end
-#                end
+                @sendpds.rewind
+                @seq += 1
+                @sendpds.put_int @seq
+                frame = @plqueue.pop
+                len = frame.size
+                @sendpds.append len
+                @sendpds.append_block frame
+                size = @sendpds.size
+                @sendpds.rewind
+                data = [packet_header, @sendpds.get_block(size)].flatten.join
+                begin
+                    @conn.send_udp_packet data
+                rescue
+                    puts "could not write (fatal!) "
+                end
             else
                 sleep 0.002
             end
