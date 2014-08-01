@@ -34,7 +34,9 @@ module Mumble
 
         def initialize type, conn, sample_rate, frame_size, channels, bitrate
 
+            @file =  File.open("sound.raw", "w")
             @pds = PacketDataStream.new
+            @sendpds = PacketDataStream.new
             @dec_sample_rate = sample_rate
             @dec_frame_size = frame_size
             @dec_channels = channels
@@ -49,15 +51,22 @@ module Mumble
                 h[k] = Opus::Decoder.new sample_rate, sample_rate / 100, 1
             end
             @celt_decoders = Hash.new do |h, k|
-               h[k] = Celt::Decoder.new sample_rate, sample_rate / 100, 1
+                h[k] = Celt::Decoder.new sample_rate, sample_rate / 100, 1
             end
             @queues = Hash.new do |h, k|
                 h[k] = Queue.new
             end
 
-            @encoder = nil
-            init_encoder type
+            @opus_encoder= Opus::Encoder.new @enc_sample_rate, @enc_sample_rate / 100, 1
+            @opus_encoder.vbr_rate = 0 # CBR
+            @opus_encoder.bitrate = @enc_bitrate
 
+            @celt_encoder= Celt::Encoder.new @enc_sample_rate, @enc_sample_rate / 100, 1
+            @celt_encoder.vbr_rate = @enc_bitrate
+            @celt_encoder.prediction_request = 0
+
+            @rawaudio = ''
+            
             @seq = 0
             @pds = PacketDataStream.new
             @plqueue = Queue.new
@@ -75,16 +84,30 @@ module Mumble
                 packet_type = @pds.get_next
                 source = @pds.get_int
                 seq = @pds.get_int
-                len = @pds.get_next
-                audio = @pds.get_block ( len & 0x7f )
                 if @queues[source].size <= 200 then
                     case (packet_type >> 5 )
                     when CODEC_ALPHA
+                        len = @pds.get_next 
+                        audio = @pds.get_block ( len & 0x7f )
                         @queues[source] << @celt_decoders[source].decode(audio.join) 
+                        while (len & 0x80) != 0
+                            len = @pds.get_next 
+                            audio = @pds.get_block ( len & 0x7f )
+                            @queues[source] << @celt_decoders[source].decode(audio.join) if len & 0x7f !=0
+                        end
                     when CODEC_BETA
-                        #puts "CELT-BETA CODEC"
+                        len = @pds.get_next 
+                        audio = @pds.get_block ( len & 0x7f )
+                        @queues[source] << @celt_decoders[source].decode(audio.join) 
+                        while (len & 0x80) != 0
+                            len = @pds.get_next 
+                            audio += @pds.get_block ( len & 0x7f )
+                            @queues[source] << @celt_decoders[source].decode(audio.join) 
+                        end
                     when CODEC_OPUS
-                         @queues[source] << @opus_decoders[source].decode(audio.join)
+                        len = @pds.get_int 
+                        audio = @pds.get_block len
+                        @queues[source] << @opus_decoders[source].decode(audio.join)
                     when CODEC_SPEEX
                         #puts "SPEEX CODEC"
                     when 1
@@ -109,61 +132,84 @@ module Mumble
         end
 
         def produce frame
-            # Ready to reencode
-            #@plqueue << @encoder.encode( frame, @compressed_size )
-            if @type == 4 then
-                @plqueue << @encoder.encode(frame, COMPRESSED_SIZE)
-            else
-                while frame.size >=1 do 
-                    part = frame.slice!(0..@encoder.frame_size*2)
-                    @plqueue << @encoder.encode(part, @compressed_size )
-                end
-            end
+            @rawaudio += frame
         end
         
         def set_codec type
-            kill_threads
-            init_encoder type
-            spawn_threads :consume
+            @type = type
         end
 
         def init_encoder type
             @type = type
-            if @encoder != nil then
-                @encoder.destroy
-            end
-            if @type == 4 then
-                @encoder= Opus::Encoder.new @enc_sample_rate, @enc_sample_rate / 100, 1
-                @encoder.vbr_rate = 0 # CBR
-                @encoder.bitrate = @enc_bitrate
-            else
-                @encoder= Celt::Encoder.new @enc_sample_rate, @enc_sample_rate / 100, 1
-                @encoder.vbr_rate = @enc_bitrate
-                @encoder.prediction_request = 0
-            end
         end
 
         private
 
-        def packet_header
-            ((@type << 5) | 0).chr
-        end
-
         def consume 
-            @pds.rewind
-            @seq += 1
-            @pds.put_int @seq
-            frame = @plqueue.pop
-            len = frame.size
-            @pds.append len
-            @pds.append_block frame
-            size = @pds.size
-            @pds.rewind
-            data = [packet_header, @pds.get_block(size)].flatten.join
-            begin
-                @conn.send_udp_packet data
-            rescue
-                puts "could not write (fatal!) "
+            num_frames = 0
+            case @type
+                when CODEC_OPUS
+                    packet_header = ((CODEC_OPUS << 5) | 0).chr
+                    while @rawaudio.size >= ( @opus_encoder.frame_size * 2 )
+                        num_frames += 1
+                        part = @rawaudio.slice!( 0, (@opus_encoder.frame_size * 2 ) )
+                        @plqueue << @opus_encoder.encode(part, COMPRESSED_SIZE)
+                    end
+                when CODEC_ALPHA
+                    packet_header = ((CODEC_ALPHA << 5) | 0).chr
+                    while @rawaudio.size >= ( @celt_encoder.frame_size * 2 )
+                        num_frames =+1
+                        part = @rawaudio.slice!( 0, (@celt_encoder.frame_size * 2 ) )
+                        @plqueue << @celt_encoder.encode(part, @compressed_size )
+                    end
+                when CODEC_BETA
+                    packet_header = ((CODEC_BETA << 5) | 0).chr
+                    while @rawaudio.size >= ( @celt_encoder.frame_size * 2 )
+                        num_frames =+1
+                        part = @rawaudio.slice!( 0, (@celt_encoder.frame_size * 2 ) )
+                        @plqueue << @celt_encoder.encode(part, @compressed_size )
+                    end
+            end
+
+            if @plqueue.size > 0 then
+#                if true == true then
+                    @sendpds.rewind
+                    @seq += 1
+                    @sendpds.put_int @seq
+                    frame = @plqueue.pop
+                    len = frame.size
+                    @sendpds.append len
+                    @sendpds.append_block frame
+                    size = @sendpds.size
+                    @sendpds.rewind
+                    data = [packet_header, @sendpds.get_block(size)].flatten.join
+                    begin
+                        @conn.send_udp_packet data
+                    rescue
+                        puts "could not write (fatal!) "
+                    end
+#                else
+#                    @sendpds.rewind
+#                    @seq += num_frames
+#                    @sendpds.put_int @seq
+#                    num_frames.times do |i|
+#                        frame = @plqueue.pop
+#                        len = frame.size
+#                        len = len | 0x80 if i < ( num_frames - 1 )
+#                        @sendpds.append len
+#                        @sendpds.append_block frame
+#                    end
+#                    size = @sendpds.size
+#                    @sendpds.rewind
+#                    data = [packet_header, @sendpds.get_block(size)].flatten.join
+#                    begin
+#                        @conn.send_udp_packet data
+#                    rescue
+#                        puts "could not write (fatal!) "
+#                    end
+#                end
+            else
+                sleep 0.002
             end
         end
     end
