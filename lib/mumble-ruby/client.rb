@@ -244,12 +244,12 @@ module Mumble
       on_codec_version do |message|
         codec_negotiation(message)
       end
-	  on_ping do |message|
-	    @ready = true
-	  end
-	  on_crypt_setup do |message|
-		# For later implementation of UDP communication
-	  end
+    on_ping do |message|
+        @ready = true
+      end
+      on_crypt_setup do |message|
+        # For later implementation of UDP communication
+      end
     end
 
     def version_exchange
@@ -280,9 +280,8 @@ module Mumble
       if @audio_streamer != nil then 
         @audio_streamer.set_codec @codec
       end
-      if @m2m != nil then
-        @m2m.set_codec @codec
-      end
+      @m2m.set_codec @codec if @m2m != nil
+      @audio_streamer.set_codec @codec if @audiostreamer != nil
     end
 
     def channel_id(channel)
