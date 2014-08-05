@@ -28,6 +28,10 @@ module Mumble
         create_encoder @sample_rate, @bitrate
     end
     
+    def destroy
+        kill_threads
+    end
+    
     def volume
       @volume ||= 100
     end

@@ -66,6 +66,9 @@ module Mumble
             spawn_threads :consume
         end
 
+        def destroy
+            kill_threads
+        end
 
         def process_udp_tunnel message
             @pds_lock.synchronize do
@@ -100,6 +103,7 @@ module Mumble
                         len = @pds.get_int 
                         audio = @pds.get_block len
                         @queues[source] << @opus_decoders[source].decode(audio.join)
+                        
                     when CODEC_SPEEX
                         #puts "SPEEX CODEC"
                     when 1

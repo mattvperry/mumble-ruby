@@ -9,33 +9,40 @@ module Mumble
       @port = port
       @cert_manager = cert_manager
       @write_lock = Mutex.new
+      @connected = false
     end
 
     def connect
       context = OpenSSL::SSL::SSLContext.new(:TLSv1)
       context.verify_mode = OpenSSL::SSL::VERIFY_NONE
       [:key, :cert].each { |s| context.send("#{s}=", @cert_manager.send(s)) }
-      tcp_sock = TCPSocket.new @host, @port
-      @sock = OpenSSL::SSL::SSLSocket.new tcp_sock, context
-      @sock.connect
+      begin
+        tcp_sock = TCPSocket.new @host, @port
+        @sock = OpenSSL::SSL::SSLSocket.new tcp_sock, context
+        @sock.connect
+        @connected = true
+      rescue
+        @connected = false
+      end
     end
 
     def disconnect
+      @connected = false
       @sock.close
     end
 
     def read_message
       header = read_data 6
-  	  type, len = header.unpack Messages::HEADER_FORMAT
-	  data = read_data len
-	  if type == message_type(:udp_tunnel)
-		# UDP Packet -- No Protobuf
-		message = message_class(:udp_tunnel).new
-		message.packet = data
-	  else
-		message = message_raw type, data
-	  end
-	  message
+      type, len = header.unpack Messages::HEADER_FORMAT
+      data = read_data len
+      if type == message_type(:udp_tunnel)
+        # UDP Packet -- No Protobuf
+        message = message_class(:udp_tunnel).new
+        message.packet = data
+      else
+        message = message_raw type, data
+      end
+      message
     end
 
     def send_udp_packet(packet)
@@ -54,13 +61,17 @@ module Mumble
 
     private
     def send_data(data)
-      @write_lock.synchronize do
-        @sock.write data
+      if @connected then
+        @write_lock.synchronize do
+          @sock.write data
+        end
       end
     end
 
     def read_data(len)
-      @sock.read len
+      if @connected then
+        @sock.read len
+      end
     end
 
     def message(obj)

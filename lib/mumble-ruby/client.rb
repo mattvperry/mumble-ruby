@@ -39,11 +39,12 @@ module Mumble
     end
 
     def disconnect
-	  @ready = false
-      @connected = false
-      kill_threads
       @conn.disconnect
-	  @m2m = nil
+      @ready = false
+      @connected = false
+      @audio_streamer.destroy if @audio_streamer 
+      @m2m.destroy if @m2m 
+      kill_threads
     end
 
     def connected?
@@ -111,15 +112,15 @@ module Mumble
         return @m2m.getsize speaker
     end
 
-    Messages.all_types.each do |msg_type|
-      define_method "on_#{msg_type}" do |&block|
-        @callbacks[msg_type] << block
-      end
+ #   Messages.all_types.each do |msg_type|
+ #     define_method "on_#{msg_type}" do |&block|
+ #       @callbacks[msg_type] << block
+ #     end
 
-      define_method "send_#{msg_type}" do |opts|
-        @conn.send_message(msg_type, opts)
-      end
-    end
+#      define_method "send_#{msg_type}" do |opts|
+#        @conn.send_message(msg_type, opts)
+#      end
+#    end
 
     def mute(bool=true)
       send_user_state self_mute: bool
@@ -239,6 +240,9 @@ module Mumble
         end
       end
       on_user_remove do |message|
+        if message.session == @session then
+            disconnect
+        end
         users.delete(message.session)
       end
       on_codec_version do |message|

@@ -11,8 +11,12 @@ module Mumble
       @pds = PacketDataStream.new
       @pds_lock = Mutex.new
 
-      @decoders = Hash.new do |h, k|
+      @opus_decoders = Hash.new do |h, k|
         h[k] = Opus::Decoder.new sample_rate, sample_rate / 100, 1
+      end
+      
+      @celt_decoders = Hash.new do |h, k|
+        h[k] = Celt::Decoder.new sample_rate, sample_rate / 100, 1
       end
 
       @queues = Hash.new do |h, k|
@@ -37,8 +41,8 @@ module Mumble
       if recording?
         @client.remove_callback :udp_tunnel, @callback
         kill_threads
-        @decoders.values.each &:destroy
-        @decoders.clear
+        @opus_decoders.values.each &:destroy
+        @opus_decoders.clear
         @queues.clear
         @file.close
         @recording = false
@@ -49,15 +53,36 @@ module Mumble
     def process_udp_tunnel(message)
       @pds_lock.synchronize do
         @pds.rewind
-        @pds.append_block message.packet[1..-1]
+        @pds.append_block message.packet#[1..-1]        # we need packet type info
 
         @pds.rewind
+        packet_type = @pds.get_next
         source = @pds.get_int
         seq = @pds.get_int
-        len = @pds.get_int
-        opus = @pds.get_block len
-
-        @queues[source] << @decoders[source].decode(opus.join)
+        case ( packet_type >> 5 )
+          when CODEC_ALPHA
+            len = @pds.get_next
+            alpha = @pds.get_block ( len & 0x7f )
+            @queues[source] << @celt_decoders[source].decode(alpha.join)
+            while ( len  0x80 ) != 0
+              len = @pds.get_next
+              alpha = @pds.get_block ( len & 0x7f )
+              @queues[source] << @celt_decoders[source].decode(alpha.join)
+            end
+          when CODEC_BETA
+            len = @pds.get_next
+            beta = @pds.get_block ( len & 0x7f )
+            @queues[source] << @celt_decoders[source].decode(beta.join)
+            while ( len  0x80 ) != 0
+              len = @pds.get_next
+              beta = @pds.get_block ( len & 0x7f )
+              @queues[source] << @celt_decoders[source].decode(beta.join)
+            end
+          when CODEC_OPUS
+            len = @pds.get_int
+            opus = @pds.get_block len
+            @queues[source] << @opus_decoders[source].decode(opus.join)
+        end
       end
     end
 
