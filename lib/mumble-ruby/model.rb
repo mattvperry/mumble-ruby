@@ -2,7 +2,6 @@ require 'forwardable'
 
 module Mumble
   class Model
-
     extend ::Forwardable
 
     class << self
@@ -24,7 +23,7 @@ module Mumble
 
     def initialize(client, data)
       @client = client
-      @data   = data
+      @data = data
     end
 
     def update(data)

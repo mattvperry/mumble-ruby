@@ -7,7 +7,7 @@ module Mumble
 
   class Client
     include ThreadTools
-    attr_reader :users, :channels, :ready, :codec
+    attr_reader :users, :channels, :ready, :codec, :max_bandwidth, :rejectmessage
     CODEC_ALPHA = 0
     CODEC_BETA = 3
     CODEC_OPUS = 4
@@ -16,6 +16,8 @@ module Mumble
       @users, @channels = {}, {}
       @callbacks = Hash.new { |h, k| h[k] = [] }
 	  @ready = false
+      @max_bandwidth = 0
+      @rejectmessage = ''
 
       @config = Mumble.configuration.dup.tap do |c|
         c.host = host
@@ -33,8 +35,8 @@ module Mumble
       init_callbacks
       version_exchange
       authenticate
-
-      spawn_threads :read, :ping
+      spawn_threads :read, :ping                           # start threads
+     # dont't start threads before server synced
       connected? # just to get a nice return value
     end
 
@@ -111,16 +113,6 @@ module Mumble
         end
         return @m2m.getsize speaker
     end
-
- #   Messages.all_types.each do |msg_type|
- #     define_method "on_#{msg_type}" do |&block|
- #       @callbacks[msg_type] << block
- #     end
-
-#      define_method "send_#{msg_type}" do |opts|
-#        @conn.send_message(msg_type, opts)
-#      end
-#    end
 
     def mute(bool=true)
       send_user_state self_mute: bool
@@ -203,12 +195,13 @@ module Mumble
     private
     def read
       message = @conn.read_message
-	  sym = message.class.to_s.demodulize.underscore.to_sym
-	  run_callbacks sym, Hashie::Mash.new(message.to_hash)
+      sym = message.class.to_s.demodulize.underscore.to_sym
+      run_callbacks sym, Hashie::Mash.new(message.to_hash)
+      
     end
 
     def ping
-      send_ping timestamp: Time.now.to_i
+      send_ping timestamp: Time.now.to_i if connected?
       sleep(5)
     end
 
@@ -224,7 +217,8 @@ module Mumble
       end
       on_channel_state do |message|
         if channel = channels[message.channel_id]
-          channel.merge! message.to_hash
+          #channel.merge! message.to_hash
+          channel.update message.to_hash
         else
           channels[message.channel_id] = Hashie::Mash.new(message.to_hash)
         end
@@ -234,9 +228,11 @@ module Mumble
       end
       on_user_state do |message|
         if user = users[message.session]
-          user.merge! message.to_hash
+          #user.merge! message.to_hash
+          user.update(message.to_hash)
         else
-          users[message.session] = Hashie::Mash.new(message.to_hash)
+          #users[message.session] = Hashie::Mash.new(message.to_hash)
+          users[message.session] = User.new(self, message.to_hash)
         end
       end
       on_user_remove do |message|
@@ -248,11 +244,18 @@ module Mumble
       on_codec_version do |message|
         codec_negotiation(message)
       end
-    on_ping do |message|
+      on_ping do |message|
         @ready = true
       end
       on_crypt_setup do |message|
         # For later implementation of UDP communication
+      end
+      on_reject do |message|
+        @rejectmessage = message
+        disconnect
+      end
+      on_server_config do |message|
+        @max_bandwidth = message.max_bandwidth if message.max_bandwidth
       end
     end
 
