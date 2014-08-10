@@ -127,10 +127,6 @@ module Mumble
       users[@session]
     end
 
-    def setrecordfile(file)
-      @recordfile=file
-    end
-
     def get_imgmsg file
         to_return = ImgReader.msg_from_file(file)
         return to_return
@@ -197,7 +193,6 @@ module Mumble
       message = @conn.read_message
       sym = message.class.to_s.demodulize.underscore.to_sym
       run_callbacks sym, Hashie::Mash.new(message.to_hash)
-      
     end
 
     def ping
@@ -217,7 +212,6 @@ module Mumble
       end
       on_channel_state do |message|
         if channel = channels[message.channel_id]
-          #channel.merge! message.to_hash
           channel.update message.to_hash
         else
           channels[message.channel_id] = Hashie::Mash.new(message.to_hash)
@@ -228,10 +222,8 @@ module Mumble
       end
       on_user_state do |message|
         if user = users[message.session]
-          #user.merge! message.to_hash
           user.update(message.to_hash)
         else
-          #users[message.session] = Hashie::Mash.new(message.to_hash)
           users[message.session] = User.new(self, message.to_hash)
         end
       end
