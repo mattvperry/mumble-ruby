@@ -36,7 +36,6 @@ module Mumble
       version_exchange
       authenticate
       spawn_threads :read, :ping                           # start threads
-     # dont't start threads before server synced
       connected? # just to get a nice return value
     end
 
@@ -47,6 +46,7 @@ module Mumble
       @audio_streamer.destroy if @audio_streamer 
       @m2m.destroy if @m2m 
       kill_threads
+      @m2m = nil
     end
 
     def connected?

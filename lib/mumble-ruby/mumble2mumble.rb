@@ -62,7 +62,6 @@ module Mumble
             
             @seq = 0
             @plqueue = Queue.new
-
             spawn_threads :consume
         end
 
@@ -166,7 +165,6 @@ module Mumble
                         @plqueue << @celt_encoder.encode(part, @compressed_size )
                     end
             end
-
             if @plqueue.size > 0 then
                 @sendpds.rewind
                 @seq += 1
