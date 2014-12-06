@@ -70,12 +70,12 @@ module Mumble
       channels[id]
     end
 
-		def move_user(user, channel)
-			cid = channel_id channel
-			uid = user_session user
-			send_user_state(session: uid, channel_id: cid)
-			channels[cid]
-		end
+    def move_user(user, channel)
+      cid = channel_id channel
+      uid = user_session user
+      send_user_state(session: uid, channel_id: cid)
+      channels[cid]
+    end
 
     def text_user(user, string)
       session = user_session user
