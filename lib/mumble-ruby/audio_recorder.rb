@@ -4,6 +4,9 @@ require 'thread'
 module Mumble
   class AudioRecorder
     include ThreadTools
+    CODEC_ALPHA = 0
+    CODEC_BETA = 3
+    CODEC_OPUS = 4
 
     def initialize(client, sample_rate)
       @client = client
@@ -80,6 +83,12 @@ module Mumble
             end
           when CODEC_OPUS
             len = @pds.get_int
+            if ( len & 0x2000 ) == 0x2000
+	      len = len & 0x1FFF
+              puts "letztes Paket#{len.to_s(16)}"
+            else
+              puts "nicht letztes Paket#{len.to_s(16)}"
+            end
             opus = @pds.get_block len
             @queues[source] << @opus_decoders[source].decode(opus.join)
         end
