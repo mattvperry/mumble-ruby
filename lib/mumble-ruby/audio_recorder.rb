@@ -85,9 +85,6 @@ module Mumble
             len = @pds.get_int
             if ( len & 0x2000 ) == 0x2000
 	      len = len & 0x1FFF
-              puts "letztes Paket#{len.to_s(16)}"
-            else
-              puts "nicht letztes Paket#{len.to_s(16)}"
             end
             opus = @pds.get_block len
             @queues[source] << @opus_decoders[source].decode(opus.join)
