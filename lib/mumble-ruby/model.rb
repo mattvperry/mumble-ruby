@@ -23,7 +23,7 @@ module Mumble
 
     def initialize(client, data)
       @client = client
-      @data = data
+      @data   = data
     end
 
     def update(data)

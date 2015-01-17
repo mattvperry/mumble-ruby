@@ -33,12 +33,10 @@ module Mumble
         CODEC_OPUS = 4
 
         def initialize type, conn, sample_rate, frame_size, channels, bitrate
-
             @pds = PacketDataStream.new
             @sendpds = PacketDataStream.new
             @type = type
             @conn = conn
-            @compressed_size = [bitrate / 800, 127].min
             @pds_lock = Mutex.new
             @opus_decoders = Hash.new do |h, k|
                 h[k] = Opus::Decoder.new sample_rate, sample_rate / 100, channels
@@ -47,21 +45,18 @@ module Mumble
                 h[k] = Celt::Decoder.new sample_rate, sample_rate / 100, channels
             end
             @queues = Hash.new do |h, k|
-                h[k] = Queue.new
+                h[k] = SizedQueue.new 100
             end
-
-            @opus_encoder= Opus::Encoder.new sample_rate, sample_rate / 100, channels
+            @opus_encoder= Opus::Encoder.new sample_rate, sample_rate / 100, channels, COMPRESSED_SIZE
             @opus_encoder.vbr_rate = 0 # CBR
             @opus_encoder.bitrate = bitrate
-
-            @celt_encoder= Celt::Encoder.new sample_rate, sample_rate / 100, channels
+            @opus_encoder.signal = Opus::Constants::OPUS_SIGNAL_MUSIC
+            @celt_encoder= Celt::Encoder.new sample_rate, sample_rate / 100, channels, [bitrate / 800, 127].min
             @celt_encoder.vbr_rate = bitrate
             @celt_encoder.prediction_request = 0
-
             @rawaudio = ''
-            
             @seq = 0
-            @plqueue = Queue.new
+            @plqueue = SizedQueue.new 100
             spawn_threads :consume
         end
 
@@ -148,21 +143,21 @@ module Mumble
                     while @rawaudio.size >= ( @opus_encoder.frame_size * 2 )
                         num_frames += 1
                         part = @rawaudio.slice!( 0, (@opus_encoder.frame_size * 2 ) )
-                        @plqueue << @opus_encoder.encode(part, COMPRESSED_SIZE)
+                        @plqueue << @opus_encoder.encode(part)
                     end
                 when CODEC_ALPHA
                     packet_header = ((CODEC_ALPHA << 5) | 0).chr
                     while @rawaudio.size >= ( @celt_encoder.frame_size * 2 )
                         num_frames =+1
                         part = @rawaudio.slice!( 0, (@celt_encoder.frame_size * 2 ) )
-                        @plqueue << @celt_encoder.encode(part, @compressed_size )
+                        @plqueue << @celt_encoder.encode(part)
                     end
                 when CODEC_BETA
                     packet_header = ((CODEC_BETA << 5) | 0).chr
                     while @rawaudio.size >= ( @celt_encoder.frame_size * 2 )
                         num_frames =+1
                         part = @rawaudio.slice!( 0, (@celt_encoder.frame_size * 2 ) )
-                        @plqueue << @celt_encoder.encode(part, @compressed_size )
+                        @plqueue << @celt_encoder.encode(part)
                     end
             end
             if @plqueue.size > 0 then

@@ -5,12 +5,13 @@ module Mumble
   class UserNotFound < StandardError; end
   class NoSupportedCodec < StandardError; end
 
+  CODEC_ALPHA = 0
+  CODEC_BETA  = 3
+  CODEC_OPUS  = 4
+
   class Client
     include ThreadTools
     attr_reader :users, :channels, :ready, :codec, :max_bandwidth, :rejectmessage
-    CODEC_ALPHA = 0
-    CODEC_BETA = 3
-    CODEC_OPUS = 4
 
     def initialize(host, port=64738, username="RubyClient", password="")
       @users, @channels = {}, {}
@@ -35,7 +36,8 @@ module Mumble
       init_callbacks
       version_exchange
       authenticate
-      spawn_threads :read, :ping                           # start threads
+
+      spawn_threads :read, :ping
       connected? # just to get a nice return value
     end
 
@@ -63,55 +65,55 @@ module Mumble
     end
 
     def get_codec
-        case @codec
+      case @codec
         when CODEC_ALPHA
-            to_return = "CELT-ALPHA (0.7.0)"
+          "CELT-ALPHA (0.7.0)"
         when CODEC_BETA
-            to_return = "CELT-BETA (0.11.0)"
+          "CELT-BETA (0.11.0)"
         when CODEC_OPUS
-            to_return = "OPUS"
-        end
-        return to_return
+          "OPUS"
+        else "[ERROR] Unknown codec: #{@codec}"
+      end
     end
     
     def mumble2mumble rec
-        unless @m2m == nil then
-            return
+      unless @m2m == nil
+        return
+      end
+      @m2m = Mumble2Mumble.new @codec, @conn, @config.sample_rate, @config.sample_rate / 100, 1, @config.bitrate
+      if rec == true then
+        on_udp_tunnel do |m|
+          @m2m.process_udp_tunnel m
         end
-        @m2m = Mumble2Mumble.new @codec, @conn, @config.sample_rate, @config.sample_rate / 100, 1, @config.bitrate
-        if rec == true then
-            on_udp_tunnel do |m|
-                @m2m.process_udp_tunnel m
-            end
-        end
+      end
     end
 
     def m2m_getspeakers
-        unless @m2m != nil then
-            return
-        end
-        return @m2m.getspeakers
+      unless @m2m != nil
+        return
+      end
+      @m2m.getspeakers
     end
 
     def m2m_getframe speaker
-        unless @m2m != nil then
-            return
-        end
-        return @m2m.getframe speaker
+      unless @m2m != nil
+        return
+      end
+      @m2m.getframe speaker
     end
 
     def m2m_writeframe frame
-        unless @m2m != nil then
-            return
-        end
-        @m2m.produce frame
+      unless @m2m != nil
+        return
+      end
+      @m2m.produce frame
     end
 
     def m2m_getsize speaker
-        unless @m2m != nil then
-            return 0
-        end
-        return @m2m.getsize speaker
+      unless @m2m != nil
+        return 0
+      end
+      @m2m.getsize speaker
     end
 
     def mute(bool=true)
@@ -128,12 +130,11 @@ module Mumble
     end
 
     def get_imgmsg file
-        to_return = ImgReader.msg_from_file(file)
-        return to_return
+      ImgReader.msg_from_file(file)
     end
 
     def set_comment newcomment
-        send_user_state comment: newcomment
+      send_user_state comment: newcomment
     end
 
     def join_channel(channel)
@@ -165,7 +166,7 @@ module Mumble
     def find_user(name)
       users.values.find { |u| u.name == name }
     end
-	
+
     def find_channel(name)
       channels.values.find { |c| c.name == name }
     end
@@ -197,7 +198,7 @@ module Mumble
 
     def ping
       send_ping timestamp: Time.now.to_i if connected?
-      sleep(5)
+      sleep(15)
     end
 
     def run_callbacks(sym, *args)
@@ -228,7 +229,7 @@ module Mumble
         end
       end
       on_user_remove do |message|
-        if message.session == @session then
+        if message.session == @session
             disconnect
         end
         users.delete(message.session)
@@ -272,15 +273,15 @@ module Mumble
     end
 
     def codec_negotiation(message)
-      encoder = Celt::Encoder.new 32000, 180, 1
-      @codec =  [CODEC_ALPHA, CODEC_BETA][[message.alpha, message.beta].index(encoder.bitstream_version)]
-      @codec = CODEC_OPUS if message.opus
-      encoder.destroy
-      if @audio_streamer != nil then 
-        @audio_streamer.set_codec @codec
+      if message.opus
+        @codec = CODEC_OPUS
+      else
+        encoder = Celt::Encoder.new 32000, 180, 1
+        @codec =  [CODEC_ALPHA, CODEC_BETA][[message.alpha, message.beta].index(encoder.bitstream_version)]
+        encoder.destroy
       end
       @m2m.set_codec @codec if @m2m != nil
-      @audio_streamer.set_codec @codec if @audiostreamer != nil
+      @audio_streamer.set_codec @codec if @audio_streamer != nil
     end
 
     def channel_id(channel)
