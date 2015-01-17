@@ -276,7 +276,7 @@ module Mumble
       if message.opus
         @codec = CODEC_OPUS
       else
-        encoder = Celt::Encoder.new 32000, 180, 1
+        encoder = Celt::Encoder.new 32000, 180, 1, 1
         @codec =  [CODEC_ALPHA, CODEC_BETA][[message.alpha, message.beta].index(encoder.bitstream_version)]
         encoder.destroy
       end
