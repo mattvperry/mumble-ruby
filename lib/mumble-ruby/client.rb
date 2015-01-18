@@ -262,7 +262,7 @@ module Mumble
     end
 
     def authenticate
-      encoder = Celt::Encoder.new 32000, 180, 1
+      encoder = Celt::Encoder.new 32000, 180, 1, 1
       send_authenticate({
         username: @config.username,
         password: @config.password,
