@@ -83,11 +83,9 @@ module Mumble
             end
           when CODEC_OPUS
             len = @pds.get_int
-            if ( len & 0x2000 ) == 0x2000
-	      len = len & 0x1FFF
-            end
-            opus = @pds.get_block len
+            opus = @pds.get_block ( len & 0x1FFF )
             @queues[source] << @opus_decoders[source].decode(opus.join)
+            @opus_decoders[source].reset if ( len & 0x2000 ) == 0x2000
         end
       end
     end
