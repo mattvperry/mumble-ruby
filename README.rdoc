@@ -1,5 +1,5 @@
 mumble-ruby
-    http://www.github.com/perrym5/mumble-ruby
+    http://github.com/mattvperry/mumble-ruby
 
 == DESCRIPTION:
 
