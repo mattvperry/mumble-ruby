@@ -40,6 +40,10 @@ module Mumble
       !!deaf || !!self_deaf
     end
 
+    def register
+      client.send_user_state(session: session, user_id: 0)
+    end
+
     def stats
       client.send_user_stats session: session
     end
