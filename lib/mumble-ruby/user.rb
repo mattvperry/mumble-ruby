@@ -33,11 +33,11 @@ module Mumble
     end
 
     def muted?
-      !!mute || !!self_mute
+      !!data['suppress'] || !!data['mute'] || !!self_mute
     end
 
     def deafened?
-      !!deaf || !!self_deaf
+      !!data['deaf'] || !!self_deaf
     end
 
     def register
