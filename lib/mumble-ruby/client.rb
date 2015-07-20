@@ -63,7 +63,11 @@ module Mumble
     def me
       users[@session]
     end
-
+    
+    def set_comment(comment="")
+      send_user_state(comment: comment)
+    end
+    
     def join_channel(channel)
       id = channel_id channel
       send_user_state(session: @session, channel_id: id)
