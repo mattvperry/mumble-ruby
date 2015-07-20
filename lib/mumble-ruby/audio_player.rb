@@ -9,12 +9,25 @@ module Mumble
       @packet_header = (type << 5).chr
       @conn = connection
       @pds = PacketDataStream.new
-      @queue = Queue.new
+      @queue = SizedQueue.new 100
       @wav_format = WaveFile::Format.new :mono, :pcm_16, sample_rate
+      @type = type
+      @bitrate = bitrate
+      @sample_rate = sample_rate
 
       create_encoder sample_rate, bitrate
     end
 
+    def set_codec(type)
+      @type = type
+      @packet_header = (type << 5).chr
+      create_encoder @sample_rate, @bitrate
+    end
+    
+    def destroy
+      kill_threads
+    end
+    
     def volume
       @volume ||= 100
     end
@@ -54,11 +67,25 @@ module Mumble
 
     private
     def create_encoder(sample_rate, bitrate)
-      @encoder = Opus::Encoder.new sample_rate, sample_rate / 100, 1
-      @encoder.vbr_rate = 0 # CBR
-      @encoder.bitrate = bitrate
+      kill_threads
+      @encoder.destroy if @encoder != nil 
+
+      if @type == CODEC_ALPHA || @type == CODEC_BETA
+        @encoder = Celt::Encoder.new sample_rate, sample_rate / 100, 1, [bitrate / 800, 127].min
+        @encoder.vbr_rate = bitrate
+        @encoder.prediction_request = 0
+      else
+        @encoder = Opus::Encoder.new sample_rate, sample_rate / 100, 1, COMPRESSED_SIZE
+        @encoder.vbr_rate = 0 # CBR
+        @encoder.bitrate = bitrate
+        @encoder.signal = Opus::Constants::OPUS_SIGNAL_MUSIC
+      end
+      if playing? then  
+        spawn_threads :produce, :consume 
+      end
     end
 
+    # TODO: call native functions
     def change_volume(pcm_data)
       pcm_data.unpack('s*').map { |s| s * (volume / 100.0) }.pack('s*')
     end
@@ -77,8 +104,12 @@ module Mumble
     end
 
     def encode_sample(sample)
-      pcm_data = change_volume sample
-      @queue << @encoder.encode(pcm_data, COMPRESSED_SIZE)
+      if volume < 100
+        pcm_data = change_volume sample
+      else
+        pcm_data = sample
+      end
+      @queue << @encoder.encode(pcm_data)
     end
 
     def consume

@@ -9,18 +9,25 @@ module Mumble
       @port = port
       @cert_manager = cert_manager
       @write_lock = Mutex.new
+      @connected = false
     end
 
     def connect
       context = OpenSSL::SSL::SSLContext.new(:TLSv1)
       context.verify_mode = OpenSSL::SSL::VERIFY_NONE
       [:key, :cert].each { |s| context.send("#{s}=", @cert_manager.send(s)) }
-      tcp_sock = TCPSocket.new @host, @port
-      @sock = OpenSSL::SSL::SSLSocket.new tcp_sock, context
-      @sock.connect
+      begin
+        tcp_sock = TCPSocket.new @host, @port
+        @sock = OpenSSL::SSL::SSLSocket.new tcp_sock, context
+        @sock.connect
+        @connected = true
+      rescue
+        @connected = false
+      end
     end
 
     def disconnect
+      @connected = false
       @sock.close
     end
 
@@ -54,13 +61,17 @@ module Mumble
 
     private
     def send_data(data)
-      @write_lock.synchronize do
-        @sock.write data
+      if @connected then
+        @write_lock.synchronize do
+          @sock.write data
+        end
       end
     end
 
     def read_data(len)
-      @sock.read len
+      if @connected then
+        @sock.read len
+      end
     end
 
     def message(obj)

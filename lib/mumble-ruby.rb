@@ -1,4 +1,5 @@
 require 'opus-ruby'
+require 'celt-ruby'
 require 'active_support/inflector'
 require 'mumble-ruby/version'
 require 'mumble-ruby/thread_tools'
@@ -13,6 +14,7 @@ require 'mumble-ruby/packet_data_stream'
 require 'mumble-ruby/img_reader'
 require 'mumble-ruby/cert_manager'
 require 'mumble-ruby/audio_recorder'
+require 'mumble-ruby/mumble2mumble.rb'
 require 'hashie'
 
 module Mumble
