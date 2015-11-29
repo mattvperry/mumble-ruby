@@ -51,7 +51,7 @@ module Mumble
     def stream_named_pipe(pipe)
       unless playing?
         @file = File.open(pipe, 'rb')
-        spawn_threads :produce, :consume
+        spawn_threads :produce
         @playing = true
       end
     end
@@ -122,8 +122,21 @@ module Mumble
       else
         @encoder = Opus::Encoder.new sample_rate, @framesize, 1, 7200
         @encoder.bitrate = bitrate
-        @encoder.vbr_rate = bitrate # CBR
-        @encoder.signal = Opus::Constants::OPUS_SIGNAL_MUSIC
+        @encoder.opus_set_signal Opus::Constants::OPUS_SIGNAL_MUSIC # alternative OPUS_SIGNAL_VOICE  but then constrainded vbr not work.
+        begin
+          @encoder.opus_set_vbr 1
+          @encoder.opus_set_vbr_constraint 1        # 1 constrainted VBR , 0 unconstrainded VBR
+          @encoder.opus_set_packet_loss_perc 10     # calculate with 10 percent packet loss 
+          @encoder.opus_set_dtx 1
+        rescue
+          puts "[Warning] Some OPUS functions not aviable, use dafoxia's opus-ruby!"
+          puts $!
+        end
+        begin
+          @encoder.packet_loss_perc= 10
+        rescue
+          puts "[Warning] Packet Loss Resistance could not setted"
+        end
       end
       if playing? then  
         spawn_threads :produce, :consume 
@@ -145,16 +158,17 @@ module Mumble
     end
 
     def produce
-      encode_sample @file.read(@encoder.frame_size * 2)
+      encode_sample @file.read(@encoder.frame_size*2)
+      consume
     end
 
     def encode_sample(sample)
       if volume < 100
         pcm_data = change_volume sample
+        @queue << @encoder.encode(change_volume(sample))
       else
-        pcm_data = sample
+        @queue << @encoder.encode(sample)
       end
-      @queue << @encoder.encode(pcm_data)
     end
 
     def consume
@@ -164,7 +178,6 @@ module Mumble
       @pds.rewind
       @seq += 1
       @pds.put_int @seq
-
       frame = @queue.pop
       @pds.put_int frame.size
       @pds.append_block frame
