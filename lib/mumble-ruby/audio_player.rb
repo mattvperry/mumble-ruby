@@ -14,7 +14,7 @@ module Mumble
       @type = type
       @bitrate = bitrate
       @sample_rate = sample_rate
-      @framesize = COMPRESSED_SIZE * 60    #60ms Audioframes by default (for music realtime is not critical)
+      @framesize = COMPRESSED_SIZE * 10    
       create_encoder sample_rate, bitrate
     end
 
@@ -121,8 +121,8 @@ module Mumble
         @encoder.prediction_request = 0
       else
         @encoder = Opus::Encoder.new sample_rate, @framesize, 1, 7200
-        @encoder.vbr_rate = 0 # CBR
         @encoder.bitrate = bitrate
+        @encoder.vbr_rate = bitrate # CBR
         @encoder.signal = Opus::Constants::OPUS_SIGNAL_MUSIC
       end
       if playing? then  
