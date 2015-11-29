@@ -3,7 +3,7 @@ require 'wavefile'
 module Mumble
   class AudioPlayer
     include ThreadTools
-    COMPRESSED_SIZE = 960
+    COMPRESSED_SIZE = 48
 
     def initialize(type, connection, sample_rate, bitrate)
       @packet_header = (type << 5).chr
@@ -14,7 +14,7 @@ module Mumble
       @type = type
       @bitrate = bitrate
       @sample_rate = sample_rate
-
+      @framesize = COMPRESSED_SIZE * 60    #60ms Audioframes by default (for music realtime is not critical)
       create_encoder sample_rate, bitrate
     end
 
@@ -65,6 +65,51 @@ module Mumble
       end
     end
 
+    def set_bitrate bitrate
+      if !(@type == CODEC_ALPHA || @type == CODEC_BETA)
+        begin
+          @encoder.bitrate = bitrate
+          @bitrate = bitrate
+        rescue
+        end
+      end
+    end
+    
+    def get_bitrate
+      @bitrate
+    end
+    
+    def set_framelength miliseconds
+      case miliseconds
+      when 1..4
+        framelength = 2.5
+      when 5..14
+        framelength = 10
+      when 15..30
+        framelength = 20
+      when 31..45
+        framelength = 40
+      else
+        framelength = 60
+      end
+      @framesize= COMPRESSED_SIZE * framelength
+      begin
+         @encoder.set_frame_size @framesize
+      rescue
+      end
+    end
+    
+    def get_frame_length
+      begin
+        (@encoder.frame_size / COMPRESSED_SIZE).to_i
+      rescue
+        puts $1
+      end
+    end
+    
+    def get_framelength
+      @framesize / COMPRESSED_SIZE
+    end
     private
     def create_encoder(sample_rate, bitrate)
       kill_threads
@@ -75,7 +120,7 @@ module Mumble
         @encoder.vbr_rate = bitrate
         @encoder.prediction_request = 0
       else
-        @encoder = Opus::Encoder.new sample_rate, sample_rate / 100, 1, COMPRESSED_SIZE
+        @encoder = Opus::Encoder.new sample_rate, @framesize, 1, 7200
         @encoder.vbr_rate = 0 # CBR
         @encoder.bitrate = bitrate
         @encoder.signal = Opus::Constants::OPUS_SIGNAL_MUSIC

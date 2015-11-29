@@ -16,7 +16,7 @@ module Mumble
     def initialize(host, port=64738, username="RubyClient", password="")
       @users, @channels = {}, {}
       @callbacks = Hash.new { |h, k| h[k] = [] }
-	  @ready = false
+      @ready = false
       @max_bandwidth = 0
       @rejectmessage = ''
 
@@ -169,6 +169,35 @@ module Mumble
 
     def find_channel(name)
       channels.values.find { |c| c.name == name }
+    end
+    
+    def set_bitrate bitrate
+      begin
+        @audio_streamer.set_bitrate bitrate
+      rescue
+      end
+    end
+    
+    def get_bitrate
+      begin
+        @audio_streamer.get_bitrate
+      rescue
+        return 0
+      end
+    end
+    
+    def set_frame_length framelength
+      begin
+        @audio_streamer.set_framelength framelength
+      rescue
+      end
+    end
+    
+    def get_frame_length
+      begin
+        @audio_streamer.get_framelength
+      rescue
+      end
     end
 
     def on_connected(&block)
