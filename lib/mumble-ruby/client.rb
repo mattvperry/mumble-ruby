@@ -285,7 +285,7 @@ module Mumble
       send_version({
         version: encode_version(1, 2, 7),
         release: "mumble-ruby #{Mumble::VERSION}",
-        os: %x{uname -s}.strip,
+        os: %x{uname -s -m}.strip,
         os_version: %x{uname -v}.strip
       })
     end
