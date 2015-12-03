@@ -236,6 +236,11 @@ module Mumble
 
     def init_callbacks
       on_server_sync do |message|
+        if message.max_bandwidth
+          @max_bandwidth = message.max_bandwidth 
+          @config.bitrate = (message.max_bandwidth - 32000 ) if (32000 + @config.bitrate) > message.max_bandwidth
+        end
+        
         @session = message.session
         @connected = true
         @callbacks[:connected].each { |c| c.call }
@@ -277,7 +282,6 @@ module Mumble
         disconnect
       end
       on_server_config do |message|
-        @max_bandwidth = message.max_bandwidth if message.max_bandwidth
       end
     end
 
