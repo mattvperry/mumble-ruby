@@ -28,11 +28,15 @@ module Mumble
 
     def disconnect
       @connected = false
-      @sock.close
+      @sock.close if @sock != nil
     end
 
     def read_message
-      header = read_data 6
+      header = nil
+      loop do
+        header = read_data 6
+        break if !( header == nil )
+      end
       type, len = header.unpack Messages::HEADER_FORMAT
       data = read_data len
       if type == message_type(:udp_tunnel)
