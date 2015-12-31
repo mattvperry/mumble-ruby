@@ -1,7 +1,7 @@
 module Mumble
   class PacketDataStream
     def initialize(data=nil)
-      @data = data || 0.chr * 1024
+      @data = data || 0.chr * 8192
       @data = @data.split ''
       @pos = 0
       @ok = true

@@ -1,4 +1,6 @@
 require 'hashie'
+require 'digest/sha1'      #for avatar image hash
+
 
 module Mumble
   class ChannelNotFound < StandardError; end
@@ -11,13 +13,14 @@ module Mumble
 
   class Client
     include ThreadTools
-    attr_reader :users, :channels, :ready, :codec, :max_bandwidth, :rejectmessage
+    attr_reader :users, :channels, :ready, :codec, :max_bandwidth, :rejectmessage, :pingtime
 
     def initialize(host, port=64738, username="RubyClient", password="")
       @users, @channels = {}, {}
       @callbacks = Hash.new { |h, k| h[k] = [] }
       @ready = false
       @max_bandwidth = 0
+      @pingtime = 0
       @rejectmessage = ''
 
       @config = Mumble.configuration.dup.tap do |c|
@@ -162,7 +165,29 @@ module Mumble
     def text_channel_img(channel, file)
       text_channel(channel, ImgReader.msg_from_file(file))
     end
-
+    
+    def set_avatar(img)
+      #first set Image, then update Hash
+      #imagesize is max 600x60
+      #has to be a PNG with AlphaChannel and 32 Bit deepth (ARGB format)
+      send_user_state texture: img
+      send_user_state texture_hash: Digest::SHA1.digest(img)
+    end
+    
+    def fetch_avatar(id)
+      #send a request for avatar image
+      #answer is in user_state
+      send_request_blob(session_texture: [id])
+    end
+    
+    def fetch_channel_description(id)
+      send_request_blob(channel_description: [id])
+    end
+    
+    def fetch_session_comment(id)
+      send_request_blob(session_comment: [id])
+    end
+    
     def find_user(name)
       users.values.find { |u| u.name == name }
     end
@@ -212,7 +237,6 @@ module Mumble
       define_method "on_#{msg_type}" do |&block|
         @callbacks[msg_type] << block
       end
-
       define_method "send_#{msg_type}" do |opts|
         @conn.send_message(msg_type, opts)
       end
@@ -226,7 +250,7 @@ module Mumble
     end
 
     def ping
-      send_ping timestamp: Time.now.to_i if connected?
+      send_ping timestamp: (Time.now.to_f*1000).to_i if connected?
       sleep(15)
     end
 
@@ -272,6 +296,7 @@ module Mumble
         codec_negotiation(message)
       end
       on_ping do |message|
+        @pingtime = (Time.now.to_f*1000).to_i - message[:timestamp].to_i
         @ready = true
       end
       on_crypt_setup do |message|
