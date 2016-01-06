@@ -1,5 +1,10 @@
 mumble-ruby
-    http://www.github.com/perrym5/mumble-ruby
+    forked from: http://www.github.com/perrym5/mumble-ruby
+	    and: https://github.com/qwertos/mumble-ruby
+
+== ADDED Dependencies (06.01.2016):
+ruby-portaudio
+		 https://github.com/dafoxia/ruby-portaudio
 
 == DESCRIPTION:
 
