@@ -1,4 +1,5 @@
 require 'wavefile'
+require 'ruby-portaudio'
 
 module Mumble
   class AudioPlayer
@@ -16,6 +17,7 @@ module Mumble
       @sample_rate = sample_rate
       @framesize = COMPRESSED_SIZE * 10    
       create_encoder sample_rate, bitrate
+      PortAudio.init
     end
 
     def set_codec(type)
@@ -23,11 +25,11 @@ module Mumble
       @packet_header = (type << 5).chr
       create_encoder @sample_rate, @bitrate
     end
-    
+
     def destroy
       kill_threads
     end
-    
+
     def volume
       @volume ||= 100
     end
@@ -56,11 +58,22 @@ module Mumble
       end
     end
 
+    def stream_portaudio
+      unless playing?
+        @portaudio = PortAudio::Stream.open( :sample_rate => 48000, :frames => 8192, :input => { :device => PortAudio::Device.default_input, :channels => 1, :sample_format => :int16, :suggested_latency => 0.05 })
+        @audiobuffer = PortAudio::SampleBuffer.new( :format => :float32, :channels => 1, :frames => @framesize)
+        @portaudio.start
+        spawn_threads :portaudio
+        @playing = true
+      end
+    end
+
     def stop
       if playing?
         kill_threads
         @encoder.reset
         @file.close unless @file.closed?
+        @portaudio.stop unless @portaudio.stopped?
         @playing = false
       end
     end
@@ -74,11 +87,11 @@ module Mumble
         end
       end
     end
-    
+
     def get_bitrate
       @bitrate
     end
-    
+
     def set_framelength miliseconds
       case miliseconds
       when 1..4
@@ -94,11 +107,12 @@ module Mumble
       end
       @framesize= COMPRESSED_SIZE * framelength
       begin
-         @encoder.set_frame_size @framesize
+        @encoder.set_frame_size @framesize
+        @audiobuffer = PortAudio::SampleBuffer.new( :format => :float32, :channels => 1, :frames => @framesize) if !@portaudio.stopped?
       rescue
       end
     end
-    
+
     def get_frame_length
       begin
         (@encoder.frame_size / COMPRESSED_SIZE).to_i
@@ -106,7 +120,7 @@ module Mumble
         puts $1
       end
     end
-    
+
     def get_framelength
       @framesize / COMPRESSED_SIZE
     end
@@ -138,9 +152,6 @@ module Mumble
           puts "[Warning] Packet Loss Resistance could not setted"
         end
       end
-      if playing? then  
-        spawn_threads :produce, :consume 
-      end
     end
 
     # TODO: call native functions
@@ -162,9 +173,18 @@ module Mumble
       consume
     end
 
+    def portaudio
+      begin
+        @portaudio.read(@audiobuffer)
+        @queue << @encoder.encode_ptr(@audiobuffer.to_ptr)
+        consume
+      rescue
+        sleep 0.2
+      end
+    end
+
     def encode_sample(sample)
       if volume < 100
-        pcm_data = change_volume sample
         @queue << @encoder.encode(change_volume(sample))
       else
         @queue << @encoder.encode(sample)
@@ -174,7 +194,6 @@ module Mumble
     def consume
       @seq ||= 0
       @seq %= 1000000 # Keep sequence number reasonable for long runs
-
       @pds.rewind
       @seq += 1
       @pds.put_int @seq

@@ -1,5 +1,6 @@
 require 'wavefile'
 require 'thread'
+require 'ruby-portaudio'
 
 module Mumble
   class AudioRecorder
@@ -17,7 +18,7 @@ module Mumble
       @opus_decoders = Hash.new do |h, k|
         h[k] = Opus::Decoder.new sample_rate, sample_rate / 100, 1
       end
-      
+
       @celt_decoders = Hash.new do |h, k|
         h[k] = Celt::Decoder.new sample_rate, sample_rate / 100, 1
       end
@@ -29,6 +30,18 @@ module Mumble
 
     def recording?
       @recording ||= false
+    end
+
+    def stream_portaudio
+      unless recording?
+        PortAudio.init
+        @portaudio = PortAudio::Stream.open( :sample_rate => 48000, :frames => 8192, :output => { :device => PortAudio::Device.default_output, :channels => 1, :sample_format => :int16, :suggested_latency => 0.25 })
+        @audiobuffer = PortAudio::SampleBuffer.new(:format   => :int16, :channels => 1, :frames => 8192)
+        @portaudio.start
+        @callback = @client.on_udp_tunnel { |msg| process_udp_tunnel msg }
+        spawn_thread :portaudio
+        @recording = true
+      end
     end
 
     def start(file)
@@ -102,6 +115,24 @@ module Mumble
           .map { |pcms| pcms.reduce(:+) / pcms.size }   # Average together all the columns of the matrix (merge audio streams)
           .flatten                                      # Flatten the resulting 1d matrix
         @file.write WaveFile::Buffer.new(samples, @wav_format)
+      end
+    end
+
+    def portaudio
+      pcms = @queues.values
+        .reject { |q| q.empty? }                      # Remove empty queues
+        .map { |q| q.pop.unpack 's*' }                # Grab the top element of each queue and expand
+      head, *tail = pcms
+      if head
+        samples = head.zip(*tail)
+          .map { |pcms| pcms.reduce(:+) / pcms.size }   # Average together all the columns of the matrix (merge audio streams)
+          .flatten                                      # Flatten the resulting 1d matrix
+        @audiobuffer = PortAudio::SampleBuffer.new(:format   => :int16, :channels => 1, :frames => send.size / 2 +1)
+        @audiobuffer.add(sample.pack 's*')
+        begin
+          @portaudio << @audiobuffer
+        rescue
+        end
       end
     end
   end
