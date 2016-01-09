@@ -1,6 +1,5 @@
 require 'wavefile'
 require 'thread'
-require 'ruby-portaudio'
 
 module Mumble
   class AudioRecorder
@@ -33,14 +32,21 @@ module Mumble
     end
 
     def stream_portaudio
-      unless recording?
-        PortAudio.init
-        @portaudio = PortAudio::Stream.open( :sample_rate => 48000, :frames => 8192, :output => { :device => PortAudio::Device.default_output, :channels => 1, :sample_format => :int16, :suggested_latency => 0.25 })
-        @audiobuffer = PortAudio::SampleBuffer.new(:format   => :int16, :channels => 1, :frames => 8192)
-        @portaudio.start
-        @callback = @client.on_udp_tunnel { |msg| process_udp_tunnel msg }
-        spawn_thread :portaudio
-        @recording = true
+      begin
+        require 'ruby-portaudio'
+        unless recording?
+          PortAudio.init
+          @portaudio = PortAudio::Stream.open( :sample_rate => 48000, :frames => 8192, :output => { :device => PortAudio::Device.default_output, :channels => 1, :sample_format => :int16, :suggested_latency => 0.25 })
+          @audiobuffer = PortAudio::SampleBuffer.new(:format   => :int16, :channels => 1, :frames => 8192)
+          @portaudio.start
+          @callback = @client.on_udp_tunnel { |msg| process_udp_tunnel msg }
+          spawn_thread :portaudio
+          @recording = true
+        end
+        true
+      rescue
+        # no portaudio gem installed - no streaming possible.
+        false
       end
     end
 

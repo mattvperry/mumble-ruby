@@ -1,5 +1,4 @@
 require 'wavefile'
-require 'ruby-portaudio'
 
 module Mumble
   class AudioPlayer
@@ -59,12 +58,19 @@ module Mumble
     end
 
     def stream_portaudio
-      unless playing?
-        @portaudio = PortAudio::Stream.open( :sample_rate => 48000, :frames => 8192, :input => { :device => PortAudio::Device.default_input, :channels => 1, :sample_format => :int16, :suggested_latency => 0.05 })
-        @audiobuffer = PortAudio::SampleBuffer.new( :format => :float32, :channels => 1, :frames => @framesize)
-        @portaudio.start
-        spawn_threads :portaudio
-        @playing = true
+      begin
+        require 'ruby-portaudio'
+        unless playing?
+          @portaudio = PortAudio::Stream.open( :sample_rate => 48000, :frames => 8192, :input => { :device => PortAudio::Device.default_input, :channels => 1, :sample_format => :int16, :suggested_latency => 0.05 })
+          @audiobuffer = PortAudio::SampleBuffer.new( :format => :float32, :channels => 1, :frames => @framesize)
+          @portaudio.start
+          spawn_threads :portaudio
+          @playing = true
+        end
+        true
+      rescue
+        # no portaudio installed - no streaming possible
+        false
       end
     end
 
