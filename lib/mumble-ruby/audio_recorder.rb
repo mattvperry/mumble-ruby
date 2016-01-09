@@ -33,9 +33,8 @@ module Mumble
 
     def stream_portaudio
       begin
-        require 'ruby-portaudio'
-        unless recording?
-          PortAudio.init
+        PortAudio.init
+        unless !recording?
           @portaudio = PortAudio::Stream.open( :sample_rate => 48000, :frames => 8192, :output => { :device => PortAudio::Device.default_output, :channels => 1, :sample_format => :int16, :suggested_latency => 0.25 })
           @audiobuffer = PortAudio::SampleBuffer.new(:format   => :int16, :channels => 1, :frames => 8192)
           @portaudio.start
@@ -133,7 +132,7 @@ module Mumble
         samples = head.zip(*tail)
           .map { |pcms| pcms.reduce(:+) / pcms.size }   # Average together all the columns of the matrix (merge audio streams)
           .flatten                                      # Flatten the resulting 1d matrix
-        @audiobuffer = PortAudio::SampleBuffer.new(:format   => :int16, :channels => 1, :frames => send.size / 2 +1)
+        @audiobuffer = PortAudio::SampleBuffer.new( :format => :int16, :channels => 1, :frames => send.size / 2 +1)
         @audiobuffer.add(sample.pack 's*')
         begin
           @portaudio << @audiobuffer

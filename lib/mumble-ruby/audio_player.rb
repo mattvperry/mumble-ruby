@@ -16,7 +16,6 @@ module Mumble
       @sample_rate = sample_rate
       @framesize = COMPRESSED_SIZE * 10    
       create_encoder sample_rate, bitrate
-      PortAudio.init
     end
 
     def set_codec(type)
@@ -60,6 +59,7 @@ module Mumble
     def stream_portaudio
       begin
         require 'ruby-portaudio'
+        PortAudio.init
         unless playing?
           @portaudio = PortAudio::Stream.open( :sample_rate => 48000, :frames => 8192, :input => { :device => PortAudio::Device.default_input, :channels => 1, :sample_format => :int16, :suggested_latency => 0.05 })
           @audiobuffer = PortAudio::SampleBuffer.new( :format => :float32, :channels => 1, :frames => @framesize)
