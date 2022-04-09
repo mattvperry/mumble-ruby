@@ -64,9 +64,14 @@ module Mumble
     end
 
     def bounded_produce
+      frame_count = 0
+      start_time = Time.now.to_f
       @file.each_buffer(@encoder.frame_size) do |buffer|
         encode_sample buffer.samples.pack('s*')
         consume
+        frame_count += 1
+        wait_time = start_time - Time.now.to_f + frame_count * 0.01
+        sleep(wait_time) if wait_time > 0
       end
 
       stop
