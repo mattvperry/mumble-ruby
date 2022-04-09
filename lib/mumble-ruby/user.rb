@@ -12,6 +12,13 @@ module Mumble
     attribute :self_mute
     attribute :self_deaf
 
+    def initialize(client, data)
+      super(client, data)
+      if channel_id.nil?
+        self.update({"channel_id" => 0})
+      end
+    end
+
     def current_channel
       client.channels[channel_id]
     end
